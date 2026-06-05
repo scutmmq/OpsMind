@@ -19,16 +19,17 @@ func registerAdminRoutes(rg *gin.RouterGroup) {
 	rg.POST("/tickets/:id/knowledge-candidate", placeholder())  // 生成知识候选
 
 	// 知识库管理
-	rg.GET("/knowledge-bases", placeholder())                   // 知识库列表
-	rg.POST("/knowledge-bases", placeholder())                  // 创建知识库
-	rg.PUT("/knowledge-bases/:id", placeholder())               // 更新知识库
-	rg.GET("/knowledge-articles", placeholder())                // 知识条目列表
-	rg.POST("/knowledge-articles", placeholder())               // 创建知识条目
-	rg.PUT("/knowledge-articles/:id", placeholder())            // 更新知识条目
-	rg.POST("/knowledge-articles/:id/review", placeholder())    // 审核知识
-	rg.POST("/knowledge-articles/:id/publish", placeholder())   // 发布知识
-	rg.POST("/knowledge-articles/:id/disable", placeholder())   // 停用知识
-	rg.POST("/knowledge-articles/:id/retry-sync", placeholder()) // 重试同步
+	rg.GET("/knowledge-bases", placeholder())                       // 知识库列表
+	rg.POST("/knowledge-bases", placeholder())                      // 创建知识库
+	rg.PUT("/knowledge-bases/:id", placeholder())                   // 更新知识库
+	rg.GET("/knowledge-articles", placeholder())                    // 知识条目列表
+	rg.POST("/knowledge-articles", placeholder())                   // 创建知识条目
+	rg.PUT("/knowledge-articles/:id", placeholder())                // 更新知识条目
+	rg.POST("/knowledge-articles/:id/submit-review", placeholder()) // 提交审核
+	rg.POST("/knowledge-articles/:id/review", placeholder())        // 审核知识
+	rg.POST("/knowledge-articles/:id/publish", placeholder())       // 发布知识
+	rg.POST("/knowledge-articles/:id/disable", placeholder())       // 停用知识
+	rg.POST("/knowledge-articles/:id/retry-sync", placeholder())    // 重试同步
 
 	// 用户管理
 	rg.GET("/users", placeholder())                             // 用户列表

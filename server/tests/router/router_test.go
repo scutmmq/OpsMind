@@ -124,22 +124,34 @@ func TestAdminRoutes_Exist(t *testing.T) {
 		{"GET", "/api/v1/admin/tickets/1"},
 		{"PATCH", "/api/v1/admin/tickets/1/status"},
 		{"POST", "/api/v1/admin/tickets/1/records"},
+		{"POST", "/api/v1/admin/tickets/1/knowledge-candidate"},
 
 		// 知识库管理
 		{"GET", "/api/v1/admin/knowledge-bases"},
 		{"POST", "/api/v1/admin/knowledge-bases"},
+		{"PUT", "/api/v1/admin/knowledge-bases/1"},
 		{"GET", "/api/v1/admin/knowledge-articles"},
 		{"POST", "/api/v1/admin/knowledge-articles"},
+		{"PUT", "/api/v1/admin/knowledge-articles/1"},
+		{"POST", "/api/v1/admin/knowledge-articles/1/submit-review"},
+		{"POST", "/api/v1/admin/knowledge-articles/1/review"},
+		{"POST", "/api/v1/admin/knowledge-articles/1/publish"},
+		{"POST", "/api/v1/admin/knowledge-articles/1/disable"},
+		{"POST", "/api/v1/admin/knowledge-articles/1/retry-sync"},
 
 		// 用户管理
 		{"GET", "/api/v1/admin/users"},
 		{"POST", "/api/v1/admin/users"},
 		{"PUT", "/api/v1/admin/users/1"},
+		{"PATCH", "/api/v1/admin/users/1/freeze"},
+		{"PATCH", "/api/v1/admin/users/1/unfreeze"},
 
 		// 角色权限
 		{"GET", "/api/v1/admin/roles"},
 		{"POST", "/api/v1/admin/roles"},
+		{"PUT", "/api/v1/admin/roles/1"},
 		{"GET", "/api/v1/admin/menus"},
+		{"PUT", "/api/v1/admin/roles/1/menus"},
 
 		// 数据看板
 		{"GET", "/api/v1/admin/dashboard/stats"},
@@ -150,6 +162,10 @@ func TestAdminRoutes_Exist(t *testing.T) {
 
 		// 系统配置
 		{"GET", "/api/v1/admin/configs/app_name"},
+		{"PUT", "/api/v1/admin/configs/app_name"},
+		{"GET", "/api/v1/admin/embedding-configs"},
+		{"POST", "/api/v1/admin/embedding-configs"},
+		{"PUT", "/api/v1/admin/embedding-configs/1"},
 	}
 
 	for _, tt := range tests {
@@ -188,5 +204,25 @@ func TestPlaceholderHandler_Returns501(t *testing.T) {
 		if w.Code != http.StatusNotImplemented {
 			t.Errorf("%s %s: 期望 501，实际 %d", rt.method, rt.path, w.Code)
 		}
+	}
+}
+
+// TestHealthCheck_Exists 测试健康检查端点存在且返回 200
+func TestHealthCheck_Exists(t *testing.T) {
+	r := setupRouter()
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/health", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("/health: 期望 200，实际 %d", w.Code)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("解析响应失败: %v", err)
+	}
+	if resp["status"] != "ok" {
+		t.Errorf("/health status = %v, 期望 ok", resp["status"])
 	}
 }

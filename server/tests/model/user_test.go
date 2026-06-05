@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"opsmind/internal/model"
+
+	"gorm.io/datatypes"
 )
 
 // TestUser_Fields 验证 User 模型字段与 TECH.md §4.2 users 表定义一致
@@ -57,6 +59,7 @@ func TestRole_Fields(t *testing.T) {
 	r := model.Role{
 		Name:        "管理员",
 		Description: "系统管理员",
+		Permissions: datatypes.JSON([]byte(`["user:read","user:write"]`)),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -67,6 +70,9 @@ func TestRole_Fields(t *testing.T) {
 	}
 	if r.Description != "系统管理员" {
 		t.Errorf("Description = %q, 期望 系统管理员", r.Description)
+	}
+	if len(r.Permissions) == 0 {
+		t.Error("Permissions 为空，期望非空 JSONB")
 	}
 }
 

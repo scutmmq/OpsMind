@@ -27,9 +27,15 @@ func Setup(cfg *config.AppConfig, db interface{}) *gin.Engine {
 	r := gin.New()
 
 	// 注册全局中间件
+	r.Use(middleware.RequestID())
 	r.Use(middleware.CORS())
 	r.Use(middleware.Logger())
 	r.Use(gin.Recovery())
+
+	// 健康检查端点（无需认证，供 Docker/K8s 存活探针使用）
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
 
 	// 公开路由组（无需认证）
 	public := r.Group("/api/v1/auth")

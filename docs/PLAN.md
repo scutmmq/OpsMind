@@ -45,6 +45,7 @@
 | `pkg/hash/hash.go` | bcrypt 密码哈希和验证工具 | T05 |
 | `internal/middleware/cors.go` | CORS 跨域中间件 | T06 |
 | `internal/middleware/logger.go` | 请求日志中间件（slog） | T06 |
+| `internal/middleware/request_id.go` | 请求 ID 中间件（UUID 链路追踪） | T06 |
 | `internal/middleware/auth.go` | JWT 认证中间件 | T12 |
 | `internal/middleware/rbac.go` | RBAC 权限校验中间件 | T13 |
 | `internal/router/router.go` | Gin Router 初始化，挂载中间件和路由组 | T07 |
@@ -161,8 +162,12 @@
 | `server/tests/pkg/jwt_test.go` | JWT 生成/解析/过期/刷新 | T05 |
 | `server/tests/pkg/hash_test.go` | bcrypt 哈希/验证/密码策略正则 | T05 |
 | `server/tests/pkg/response_test.go` | 统一响应格式输出 | T05 |
+| `server/tests/middleware/cors_test.go` | CORS 允许/禁止来源、预检请求、方法白名单 | T06 |
+| `server/tests/middleware/logger_test.go` | 日志字段、JSON 格式、不同状态码 | T06 |
+| `server/tests/middleware/request_id_test.go` | 请求 ID 自动生成、客户端透传、Context 写入 | T06 |
 | `server/tests/middleware/auth_test.go` | JWT 中间件：有效令牌/过期令牌/缺失令牌 | T12 |
 | `server/tests/middleware/rbac_test.go` | RBAC 中间件：有权限/无权限/管理员权限 | T13 |
+| `server/tests/router/router_test.go` | 路由注册骨架、健康检查端点、501 占位响应 | T07 |
 | `server/tests/adapter/rag_client_test.go` | RagClient：请求构造/响应映射/超时/错误降级 | T20 |
 | `server/tests/adapter/storage_client_test.go` | StorageClient：上传/预签名/删除 | T27 |
 | `server/tests/service/auth_service_test.go` | 登录成功/密码错误/账号冻结/令牌刷新 | T11 |

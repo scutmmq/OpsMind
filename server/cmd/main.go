@@ -23,6 +23,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 生产模式下 JWT 密钥必须非空，否则拒绝启动。
+	// 调试模式仅输出警告，便于本地开发不配置 JWT 也能启动。
+	if cfg.JWT.Secret == "" {
+		if cfg.Server.Mode == "release" {
+			slog.Error("JWT 密钥为空，生产模式不允许启动，请设置环境变量 OPSMIND_JWT_SECRET")
+			os.Exit(1)
+		}
+		slog.Warn("JWT 密钥为空，JWT 认证功能不可用（仅调试模式允许）")
+	}
+
 	// 初始化路由（数据库参数暂传 nil，后续任务补充）
 	r := router.Setup(cfg, nil)
 
