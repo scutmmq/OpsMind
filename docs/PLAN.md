@@ -145,8 +145,9 @@
 
 | 文件路径 | 职责 | 所属任务 |
 | --- | --- | --- |
-| `docker-compose.yml` | Docker Compose 编排（6 个服务） | T37 |
-| `.env` | 环境变量模板 | T37 |
+| `docker-compose.yml` | Docker Compose 编排（本地开发：PostgreSQL；T37 补充完整服务） | T09, T37 |
+| `.env` | 环境变量配置（已 gitignore） | T09, T37 |
+| `.env.example` | 环境变量模板（提交到版本库） | T09, T37 |
 | `server/Dockerfile` | Go 后端镜像构建 | T37 |
 | `web/Dockerfile` | Vue 前端镜像构建（nginx） | T37 |
 | `Makefile` | 构建和开发命令 | T37 |
@@ -443,11 +444,11 @@
 
 ---
 
-### Task 09: 系统配置 Repository
+### Task 09: 系统配置 Repository ✅
 
 **Files:**
-- Create: `server/internal/repository/config_repo.go`
-- Test: `server/tests/service/config_service_test.go`
+- Create: `server/internal/repository/config_repo.go` ✅
+- Test: `server/tests/service/config_service_test.go` ✅
 
 **说明：**
 

@@ -1,0 +1,31 @@
+# OpsMind 本地开发环境
+#
+# 当前仅包含 M1 阶段所需的 PostgreSQL。
+# 后续任务（T37）会补充完整服务编排（opsmind-server, opsmind-web, anythingllm, minio, vllm）。
+#
+# 使用方式：
+#   docker compose up -d          # 启动
+#   docker compose down           # 停止
+#   docker compose down -v        # 停止并清除数据卷
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: opsmind-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-opsmind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opsmind123}
+      POSTGRES_DB: ${POSTGRES_DB:-opsmind}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-opsmind}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
