@@ -77,3 +77,11 @@ func (r *UserRepo) ExistsByPhone(phone string) (bool, error) {
 func (r *UserRepo) Create(user *model.User) error {
 	return r.db.Create(user).Error
 }
+
+// Update 更新用户全部字段。
+//
+// 为什么用 Save 而非 Updates：Save 会更新所有字段（包括零值），
+// 适用于修改密码等需要更新 password_hash、first_login、updated_at 的场景。
+func (r *UserRepo) Update(user *model.User) error {
+	return r.db.Save(user).Error
+}

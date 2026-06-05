@@ -172,7 +172,7 @@
 | `server/tests/repository/user_repo_test.go` | 用户 Repository：GetByID/GetByUsername/GetByPhone/ExistsByPhone/Create | T10 |
 | `server/tests/adapter/rag_client_test.go` | RagClient：请求构造/响应映射/超时/错误降级 | T20 |
 | `server/tests/adapter/storage_client_test.go` | StorageClient：上传/预签名/删除 | T27 |
-| `server/tests/service/auth_service_test.go` | 登录成功/密码错误/账号冻结/令牌刷新 | T11 |
+| `server/tests/service/auth_service_test.go` | 登录成功/密码错误/账号冻结/令牌刷新/修改密码 | T11 |
 | `server/tests/service/user_service_test.go` | 用户 CRUD/冻结恢复/密码校验/用户名重复 | T14 |
 | `server/tests/service/role_service_test.go` | 角色 CRUD/菜单绑定 | T15 |
 | `server/tests/service/knowledge_service_test.go` | 知识 CRUD/审核流程/发布同步/停用/重试 | T18, T19 |
@@ -182,7 +182,7 @@
 | `server/tests/service/config_service_test.go` | 配置 CRUD/embedding 管理 | T34 |
 | `server/tests/service/message_service_test.go` | 消息查询/标记已读/未读计数 | T29 |
 | `server/tests/service/scheduler_test.go` | 自动关闭 7 天逻辑/消息通知触发 | T30 |
-| `server/tests/handler/auth_test.go` | 登录接口集成测试 | T11 |
+| `server/tests/handler/auth_handler_test.go` | 登录接口集成测试 | T11 |
 | `server/tests/handler/chat_test.go` | 问答接口集成测试（含降级场景） | T26 |
 | `server/tests/handler/ticket_test.go` | 申告接口集成测试（含状态机） | T24 |
 | `server/tests/handler/knowledge_test.go` | 知识管理接口集成测试 | T18, T19 |
@@ -498,15 +498,17 @@
 
 ---
 
-### Task 11: 认证 Service + Handler
+### Task 11: 认证 Service + Handler ✅
 
 **Files:**
-- Create: `server/internal/dto/request/auth.go`
-- Create: `server/internal/dto/response/auth.go`
-- Create: `server/internal/service/auth_service.go`
-- Create: `server/internal/handler/auth.go`
-- Test: `server/tests/service/auth_service_test.go`
-- Test: `server/tests/handler/auth_test.go`
+- Create: `server/internal/dto/request/auth.go` ✅
+- Create: `server/internal/dto/response/auth.go` ✅
+- Create: `server/internal/service/auth_service.go` ✅
+- Create: `server/internal/handler/auth.go` ✅
+- Modify: `server/internal/repository/user_repo.go`（添加 Update 方法）✅
+- Modify: `server/internal/router/test_helper.go`（测试辅助）✅
+- Test: `server/tests/service/auth_service_test.go` ✅
+- Test: `server/tests/handler/auth_handler_test.go` ✅
 
 **说明：**
 

@@ -5,7 +5,7 @@
 // - /api/v1/portal — 门户端路由（需要 JWT 认证）
 // - /api/v1/admin — 后台管理路由（需要 JWT 认证 + RBAC 权限）
 //
-// MVP 阶段所有路由 Handler 返回 501 Not Implemented，后续任务逐步实现。
+// MVP 阶段部分路由 Handler 返回 501 Not Implemented，后续任务逐步替换。
 package router
 
 import (
@@ -13,14 +13,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"opsmind/internal/config"
+	"opsmind/internal/handler"
 	"opsmind/internal/middleware"
 )
 
 // Setup 初始化 Gin 引擎并注册所有路由。
 //
 // cfg 用于设置 Gin 模式（debug/release）和中间件配置。
-// db 参数保留给后续任务（JWT 中间件需要数据库查询用户角色）。
-func Setup(cfg *config.AppConfig, db interface{}) *gin.Engine {
+// authHandler 为 nil 时公开路由使用占位 Handler（用于路由骨架测试）。
+func Setup(cfg *config.AppConfig, authHandler *handler.AuthHandler) *gin.Engine {
 	// 设置 Gin 模式
 	gin.SetMode(cfg.Server.Mode)
 
@@ -39,7 +40,7 @@ func Setup(cfg *config.AppConfig, db interface{}) *gin.Engine {
 
 	// 公开路由组（无需认证）
 	public := r.Group("/api/v1/auth")
-	registerPublicRoutes(public)
+	registerPublicRoutes(public, authHandler)
 
 	// 门户端路由组（需要 JWT 认证）
 	portal := r.Group("/api/v1/portal")
@@ -66,10 +67,17 @@ func placeholder() gin.HandlerFunc {
 
 // registerPublicRoutes 注册公开路由（无需认证）。
 //
-// 包括登录、刷新令牌、修改密码、退出登录等认证相关接口。
-func registerPublicRoutes(rg *gin.RouterGroup) {
-	rg.POST("/login", placeholder())           // 用户登录
-	rg.POST("/refresh", placeholder())         // 刷新令牌
-	rg.POST("/change-password", placeholder()) // 修改密码
-	rg.POST("/logout", placeholder())          // 退出登录
+// authHandler 非 nil 时绑定真实 Handler，否则使用占位 Handler。
+func registerPublicRoutes(rg *gin.RouterGroup, authHandler *handler.AuthHandler) {
+	if authHandler != nil {
+		rg.POST("/login", authHandler.Login)
+		rg.POST("/refresh", authHandler.Refresh)
+		rg.POST("/change-password", authHandler.ChangePassword)
+		rg.POST("/logout", authHandler.Logout)
+	} else {
+		rg.POST("/login", placeholder())
+		rg.POST("/refresh", placeholder())
+		rg.POST("/change-password", placeholder())
+		rg.POST("/logout", placeholder())
+	}
 }
