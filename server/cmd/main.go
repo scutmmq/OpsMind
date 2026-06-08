@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 
+	"opsmind/internal/adapter"
 	"opsmind/internal/config"
 	"opsmind/internal/database"
 	"opsmind/internal/handler"
@@ -51,31 +52,43 @@ func main() {
 	}
 	slog.Info("数据库迁移完成")
 
-	// 4. 初始化 Repository 层
+	// 4. 初始化 Adapter 层（外部服务适配器）
+	ragClient := adapter.NewAnythingLLMClient(adapter.AnythingLLMConfig{
+		BaseURL:        cfg.AnythingLLM.BaseURL,
+		APIKey:         cfg.AnythingLLM.APIKey,
+		TimeoutSeconds: cfg.AnythingLLM.TimeoutSeconds,
+	})
+	slog.Info("RagClient 已初始化", "base_url", cfg.AnythingLLM.BaseURL)
+
+	// 5. 初始化 Repository 层
 	userRepo := repository.NewUserRepo(db)
 	roleRepo := repository.NewRoleRepo(db)
-	// 后续里程碑补充：configRepo, ticketRepo, knowledgeRepo, chatRepo, auditRepo, messageRepo
+	knowledgeRepo := repository.NewKnowledgeRepo(db)
+	// 后续里程碑补充：configRepo, ticketRepo, chatRepo, auditRepo, messageRepo
 
-	// 5. 初始化 Service 层
+	// 6. 初始化 Service 层
 	authService := service.NewAuthService(userRepo, db)
 	userService := service.NewUserService(userRepo, db)
 	roleService := service.NewRoleService(roleRepo, db)
-	// 后续里程碑补充：ticketService, knowledgeService, chatService, dashboardService, configService, messageService
+	knowledgeService := service.NewKnowledgeService(knowledgeRepo, ragClient)
+	// 后续里程碑补充：ticketService, chatService, dashboardService, configService, messageService
 
-	// 6. 初始化 Handler 层
+	// 7. 初始化 Handler 层
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	roleHandler := handler.NewRoleHandler(roleService)
-	// 后续里程碑补充：ticketHandler, knowledgeHandler, chatHandler, dashboardHandler, configHandler, messageHandler, auditHandler
+	knowledgeHandler := handler.NewKnowledgeHandler(knowledgeService)
+	// 后续里程碑补充：ticketHandler, chatHandler, dashboardHandler, configHandler, messageHandler, auditHandler
 
-	// 7. 设置路由
+	// 8. 设置路由
 	r := router.Setup(cfg, &router.Handlers{
-		Auth: authHandler,
-		User: userHandler,
-		Role: roleHandler,
+		Auth:      authHandler,
+		User:      userHandler,
+		Role:      roleHandler,
+		Knowledge: knowledgeHandler,
 	})
 
-	// 8. 启动 HTTP 服务
+	// 9. 启动 HTTP 服务
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	slog.Info("HTTP 服务已启动", "addr", addr)
 

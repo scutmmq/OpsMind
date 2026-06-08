@@ -22,9 +22,10 @@ import (
 // 为什么用结构体而非多参数：Handler 数量随里程碑增加，
 // 结构体便于扩展，添加新 Handler 时只需加字段，不影响 Setup 函数签名。
 type Handlers struct {
-	Auth *handler.AuthHandler
-	User *handler.UserHandler
-	Role *handler.RoleHandler
+	Auth      *handler.AuthHandler
+	User      *handler.UserHandler
+	Role      *handler.RoleHandler
+	Knowledge *handler.KnowledgeHandler
 }
 
 // Setup 初始化 Gin 引擎并注册所有路由。

@@ -23,18 +23,34 @@ func registerAdminRoutes(rg *gin.RouterGroup, h *Handlers) {
 	rg.POST("/tickets/:id/records", placeholder())
 	rg.POST("/tickets/:id/knowledge-candidate", placeholder())
 
-	// 知识库管理（占位 — T18 实现）
-	rg.GET("/knowledge-bases", placeholder())
-	rg.POST("/knowledge-bases", placeholder())
-	rg.PUT("/knowledge-bases/:id", placeholder())
-	rg.GET("/knowledge-articles", placeholder())
-	rg.POST("/knowledge-articles", placeholder())
-	rg.PUT("/knowledge-articles/:id", placeholder())
-	rg.POST("/knowledge-articles/:id/submit-review", placeholder())
-	rg.POST("/knowledge-articles/:id/review", placeholder())
-	rg.POST("/knowledge-articles/:id/publish", placeholder())
-	rg.POST("/knowledge-articles/:id/disable", placeholder())
-	rg.POST("/knowledge-articles/:id/retry-sync", placeholder())
+	// 知识库管理（T18 — 已实现）
+	if h != nil && h.Knowledge != nil {
+		rg.GET("/knowledge-bases", h.Knowledge.ListKBs)
+		rg.POST("/knowledge-bases", h.Knowledge.CreateKB)
+		rg.PUT("/knowledge-bases/:id", h.Knowledge.UpdateKB)
+		rg.GET("/knowledge-bases/:kb_id/articles", h.Knowledge.ListArticles)
+		rg.POST("/knowledge-bases/:kb_id/articles", h.Knowledge.CreateArticle)
+		rg.PUT("/articles/:id", h.Knowledge.UpdateArticle)
+		rg.GET("/articles/:id", h.Knowledge.GetArticleDetail)
+		rg.POST("/articles/:id/submit-review", h.Knowledge.SubmitReview)
+		rg.POST("/articles/:id/review", h.Knowledge.Review)
+		rg.POST("/articles/:id/publish", h.Knowledge.Publish)
+		rg.POST("/articles/:id/disable", h.Knowledge.Disable)
+		rg.POST("/articles/:id/retry-sync", h.Knowledge.RetrySync)
+	} else {
+		rg.GET("/knowledge-bases", placeholder())
+		rg.POST("/knowledge-bases", placeholder())
+		rg.PUT("/knowledge-bases/:id", placeholder())
+		rg.GET("/knowledge-bases/:kb_id/articles", placeholder())
+		rg.POST("/knowledge-bases/:kb_id/articles", placeholder())
+		rg.PUT("/articles/:id", placeholder())
+		rg.GET("/articles/:id", placeholder())
+		rg.POST("/articles/:id/submit-review", placeholder())
+		rg.POST("/articles/:id/review", placeholder())
+		rg.POST("/articles/:id/publish", placeholder())
+		rg.POST("/articles/:id/disable", placeholder())
+		rg.POST("/articles/:id/retry-sync", placeholder())
+	}
 
 	// 用户管理（T14 — 已实现）
 	userRoutes := rg.Group("/users")
@@ -85,10 +101,18 @@ func registerAdminRoutes(rg *gin.RouterGroup, h *Handlers) {
 	// 操作日志（占位 — T33 实现）
 	rg.GET("/audit-logs", placeholder())
 
+	// Embedding 配置（T19 — 已实现）
+	if h != nil && h.Knowledge != nil {
+		rg.GET("/embedding-configs", h.Knowledge.ListEmbeddingConfigs)
+		rg.POST("/embedding-configs", h.Knowledge.CreateEmbeddingConfig)
+		rg.PUT("/embedding-configs/:id", h.Knowledge.UpdateEmbeddingConfig)
+	} else {
+		rg.GET("/embedding-configs", placeholder())
+		rg.POST("/embedding-configs", placeholder())
+		rg.PUT("/embedding-configs/:id", placeholder())
+	}
+
 	// 系统配置（占位 — T34 实现）
 	rg.GET("/configs/:key", placeholder())
 	rg.PUT("/configs/:key", placeholder())
-	rg.GET("/embedding-configs", placeholder())
-	rg.POST("/embedding-configs", placeholder())
-	rg.PUT("/embedding-configs/:id", placeholder())
 }
