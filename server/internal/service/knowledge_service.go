@@ -467,3 +467,129 @@ func getAggregateSyncStatus(article *model.KnowledgeArticle) string {
 		return "pending"
 	}
 }
+
+// =============================================================================
+// EmbeddingConfig
+// =============================================================================
+
+// CreateEmbeddingConfig 创建 Embedding 配置。
+//
+// 业务规则：
+//   - model_type=1（API 类型）时 api_endpoint 必填
+//   - model_type=2（本地类型）时 local_path 必填
+//   - is_default=true 时，先将其他配置的 is_default 设为 false
+func (s *KnowledgeService) CreateEmbeddingConfig(req request.CreateEmbeddingConfigRequest) error {
+	// 校验必填字段
+	if req.ModelType == 1 && req.APIEndpoint == "" {
+		return AppError{Code: errcode.ErrParam, Message: "API 类型必须填写 api_endpoint"}
+	}
+	if req.ModelType == 2 && req.LocalPath == "" {
+		return AppError{Code: errcode.ErrParam, Message: "本地类型必须填写 local_path"}
+	}
+
+	// 设为默认时，先清空其他默认
+	if req.IsDefault {
+		if err := s.clearDefaultEmbedding(); err != nil {
+			return err
+		}
+	}
+
+	cfg := &model.EmbeddingConfig{
+		Name:           req.Name,
+		ModelType:      req.ModelType,
+		APIEndpoint:    req.APIEndpoint,
+		APIKey:         req.APIKey,
+		LocalPath:      req.LocalPath,
+		VectorDimension: req.VectorDimension,
+		IsDefault:      req.IsDefault,
+	}
+
+	return s.repo.CreateEmbeddingConfig(cfg)
+}
+
+// UpdateEmbeddingConfig 更新 Embedding 配置。
+//
+// 更新为默认时同样先清空其他默认。
+func (s *KnowledgeService) UpdateEmbeddingConfig(id int64, req request.UpdateEmbeddingConfigRequest) error {
+	cfg, err := s.repo.ListEmbeddingConfigs()
+	if err != nil {
+		return err
+	}
+
+	// 查找目标配置
+	found := false
+	for _, c := range cfg {
+		if c.ID == id {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return AppError{Code: errcode.ErrNotFound, Message: "Embedding 配置不存在"}
+	}
+
+	// 设为默认时，先清空其他默认
+	if req.IsDefault {
+		if err := s.clearDefaultEmbedding(); err != nil {
+			return err
+		}
+	}
+
+	updated := &model.EmbeddingConfig{
+		ID:             id,
+		Name:           req.Name,
+		ModelType:      req.ModelType,
+		APIEndpoint:    req.APIEndpoint,
+		APIKey:         req.APIKey,
+		LocalPath:      req.LocalPath,
+		VectorDimension: req.VectorDimension,
+		IsDefault:      req.IsDefault,
+	}
+
+	return s.repo.UpdateEmbeddingConfig(updated)
+}
+
+// ListEmbeddingConfigs 列出全部 Embedding 配置。
+func (s *KnowledgeService) ListEmbeddingConfigs() ([]response.EmbeddingConfigResponse, error) {
+	configs, err := s.repo.ListEmbeddingConfigs()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]response.EmbeddingConfigResponse, len(configs))
+	for i, c := range configs {
+		result[i] = response.EmbeddingConfigResponse{
+			ID:             c.ID,
+			Name:           c.Name,
+			ModelType:      c.ModelType,
+			APIEndpoint:    c.APIEndpoint,
+			APIKey:         c.APIKey,
+			LocalPath:      c.LocalPath,
+			VectorDimension: c.VectorDimension,
+			IsDefault:      c.IsDefault,
+			CreatedAt:      c.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+	}
+
+	return result, nil
+}
+
+// clearDefaultEmbedding 清空所有配置的 is_default 标志。
+//
+// 为什么批量更新而非逐条：确保 is_default=true 配置唯一，
+// 原子操作避免并发创建两个默认配置的竞态条件。
+func (s *KnowledgeService) clearDefaultEmbedding() error {
+	configs, err := s.repo.ListEmbeddingConfigs()
+	if err != nil {
+		return err
+	}
+	for _, c := range configs {
+		if c.IsDefault {
+			c.IsDefault = false
+			if err := s.repo.UpdateEmbeddingConfig(&c); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

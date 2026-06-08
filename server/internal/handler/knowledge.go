@@ -293,6 +293,65 @@ func (h *KnowledgeHandler) GetArticleDetail(c *gin.Context) {
 // 辅助函数
 // =============================================================================
 
+// =============================================================================
+// EmbeddingConfig
+// =============================================================================
+
+// CreateEmbeddingConfig 创建 Embedding 配置。
+//
+// POST /api/v1/admin/embedding-configs
+func (h *KnowledgeHandler) CreateEmbeddingConfig(c *gin.Context) {
+	var req request.CreateEmbeddingConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errcode.ErrParam, "参数校验失败: "+err.Error())
+		return
+	}
+
+	if err := h.svc.CreateEmbeddingConfig(req); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	response.Success(c, nil)
+}
+
+// UpdateEmbeddingConfig 更新 Embedding 配置。
+//
+// PUT /api/v1/admin/embedding-configs/:id
+func (h *KnowledgeHandler) UpdateEmbeddingConfig(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Error(c, errcode.ErrParam, "无效的配置 ID")
+		return
+	}
+
+	var req request.UpdateEmbeddingConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, errcode.ErrParam, "参数校验失败: "+err.Error())
+		return
+	}
+
+	if svcErr := h.svc.UpdateEmbeddingConfig(id, req); svcErr != nil {
+		handleServiceError(c, svcErr)
+		return
+	}
+
+	response.Success(c, nil)
+}
+
+// ListEmbeddingConfigs 列出全部 Embedding 配置。
+//
+// GET /api/v1/admin/embedding-configs
+func (h *KnowledgeHandler) ListEmbeddingConfigs(c *gin.Context) {
+	configs, err := h.svc.ListEmbeddingConfigs()
+	if err != nil {
+		response.Error(c, errcode.ErrUnknown, err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{"items": configs})
+}
+
 // getCurrentUserID 从 Gin context 中获取当前用户 ID。
 //
 // 在实际环境中由 JWTAuth 中间件注入。

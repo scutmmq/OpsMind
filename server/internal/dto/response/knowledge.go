@@ -64,3 +64,16 @@ type ChunkResponse struct {
 	SyncError       string     `json:"sync_error"`
 	SyncedAt        *time.Time `json:"synced_at"`
 }
+
+// EmbeddingConfigResponse Embedding 配置响应。
+type EmbeddingConfigResponse struct {
+	ID             int64  `json:"id"`
+	Name           string `json:"name"`
+	ModelType      int16  `json:"model_type"`
+	APIEndpoint    string `json:"api_endpoint"`
+	APIKey         string `json:"api_key"`
+	LocalPath      string `json:"local_path"`
+	VectorDimension int   `json:"vector_dimension"`
+	IsDefault      bool   `json:"is_default"`
+	CreatedAt      string `json:"created_at"`
+}

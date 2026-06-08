@@ -90,6 +90,7 @@ func setupKnowledgeService(t *testing.T) (*service.KnowledgeService, *mockRagCli
 	knowledgeSvcDB.Exec("DELETE FROM knowledge_chunks")
 	knowledgeSvcDB.Exec("DELETE FROM knowledge_articles")
 	knowledgeSvcDB.Exec("DELETE FROM knowledge_bases")
+	knowledgeSvcDB.Exec("DELETE FROM embedding_configs")
 
 	return svc, mockRAG
 }
@@ -607,5 +608,188 @@ func TestKnowledgeService_GetArticleDetail(t *testing.T) {
 	}
 	if result.Chunks[0].Content != "切片内容" {
 		t.Errorf("期望切片内容 '切片内容', got '%s'", result.Chunks[0].Content)
+	}
+}
+
+// =============================================================================
+// EmbeddingConfig 测试
+// =============================================================================
+
+// TestKnowledgeService_CreateEmbeddingConfig_API 创建 API 类型 Embedding 配置。
+func TestKnowledgeService_CreateEmbeddingConfig_API(t *testing.T) {
+	svc, _ := setupKnowledgeService(t)
+
+	err := svc.CreateEmbeddingConfig(request.CreateEmbeddingConfigRequest{
+		Name:           "OpenAI Embedding",
+		ModelType:      1,
+		APIEndpoint:    "https://api.openai.com/v1/embeddings",
+		APIKey:         "sk-test",
+		VectorDimension: 1536,
+		IsDefault:      false,
+	})
+	if err != nil {
+		t.Fatalf("期望无错误, got %v", err)
+	}
+
+	configs, err := svc.ListEmbeddingConfigs()
+	if err != nil {
+		t.Fatalf("期望无错误, got %v", err)
+	}
+	if len(configs) != 1 {
+		t.Errorf("期望 1 个配置, got %d", len(configs))
+	}
+	if configs[0].Name != "OpenAI Embedding" {
+		t.Errorf("期望名称 'OpenAI Embedding', got '%s'", configs[0].Name)
+	}
+}
+
+// TestKnowledgeService_CreateEmbeddingConfig_Local 创建本地类型 Embedding 配置。
+func TestKnowledgeService_CreateEmbeddingConfig_Local(t *testing.T) {
+	svc, _ := setupKnowledgeService(t)
+
+	err := svc.CreateEmbeddingConfig(request.CreateEmbeddingConfigRequest{
+		Name:           "本地 BGE",
+		ModelType:      2,
+		LocalPath:      "/models/bge-large-zh",
+		VectorDimension: 1024,
+		IsDefault:      false,
+	})
+	if err != nil {
+		t.Fatalf("期望无错误, got %v", err)
+	}
+
+	configs, _ := svc.ListEmbeddingConfigs()
+	if len(configs) != 1 {
+		t.Fatalf("期望 1 个配置, got %d", len(configs))
+	}
+	if configs[0].ModelType != 2 {
+		t.Errorf("期望 model_type=2, got %d", configs[0].ModelType)
+	}
+}
+
+// TestKnowledgeService_CreateEmbeddingConfig_APIMissingEndpoint API 类型缺少 api_endpoint 报错。
+func TestKnowledgeService_CreateEmbeddingConfig_APIMissingEndpoint(t *testing.T) {
+	svc, _ := setupKnowledgeService(t)
+
+	err := svc.CreateEmbeddingConfig(request.CreateEmbeddingConfigRequest{
+		Name:           "缺少端点",
+		ModelType:      1,
+		// APIEndpoint 为空
+		VectorDimension: 768,
+	})
+	if err == nil {
+		t.Fatal("期望错误, got nil")
+	}
+}
+
+// TestKnowledgeService_CreateEmbeddingConfig_LocalMissingPath 本地类型缺少 local_path 报错。
+func TestKnowledgeService_CreateEmbeddingConfig_LocalMissingPath(t *testing.T) {
+	svc, _ := setupKnowledgeService(t)
+
+	err := svc.CreateEmbeddingConfig(request.CreateEmbeddingConfigRequest{
+		Name:           "缺少路径",
+		ModelType:      2,
+		// LocalPath 为空
+		VectorDimension: 768,
+	})
+	if err == nil {
+		t.Fatal("期望错误, got nil")
+	}
+}
+
+// TestKnowledgeService_CreateEmbeddingConfig_SetDefault 设为默认时其他配置取消默认。
+func TestKnowledgeService_CreateEmbeddingConfig_SetDefault(t *testing.T) {
+	svc, _ := setupKnowledgeService(t)
+
+	// 先创建一个默认配置
+	err := svc.CreateEmbeddingConfig(request.CreateEmbeddingConfigRequest{
+		Name:           "旧默认",
+		ModelType:      1,
+		APIEndpoint:    "https://old.example.com",
+		VectorDimension: 768,
+		IsDefault:      true,
+	})
+	if err != nil {
+		t.Fatalf("创建旧默认失败: %v", err)
+	}
+
+	// 创建新的默认配置
+	err = svc.CreateEmbeddingConfig(request.CreateEmbeddingConfigRequest{
+		Name:           "新默认",
+		ModelType:      1,
+		APIEndpoint:    "https://new.example.com",
+		VectorDimension: 1536,
+		IsDefault:      true,
+	})
+	if err != nil {
+		t.Fatalf("创建新默认失败: %v", err)
+	}
+
+	// 验证旧默认被取消
+	configs, _ := svc.ListEmbeddingConfigs()
+	if len(configs) != 2 {
+		t.Fatalf("期望 2 个配置, got %d", len(configs))
+	}
+	for _, c := range configs {
+		if c.Name == "旧默认" && c.IsDefault {
+			t.Error("期望旧默认 is_default=false")
+		}
+		if c.Name == "新默认" && !c.IsDefault {
+			t.Error("期望新默认 is_default=true")
+		}
+	}
+}
+
+// TestKnowledgeService_UpdateEmbeddingConfig 更新 Embedding 配置。
+func TestKnowledgeService_UpdateEmbeddingConfig(t *testing.T) {
+	svc, _ := setupKnowledgeService(t)
+
+	// 先创建一个配置
+	err := svc.CreateEmbeddingConfig(request.CreateEmbeddingConfigRequest{
+		Name:           "原始配置",
+		ModelType:      1,
+		APIEndpoint:    "https://old.example.com",
+		VectorDimension: 768,
+	})
+	if err != nil {
+		t.Fatalf("创建配置失败: %v", err)
+	}
+
+	// 获取 ID
+	configs, _ := svc.ListEmbeddingConfigs()
+	cfgID := configs[0].ID
+
+	// 更新
+	err = svc.UpdateEmbeddingConfig(cfgID, request.UpdateEmbeddingConfigRequest{
+		Name:           "更新后配置",
+		ModelType:      2,
+		LocalPath:      "/models/new-model",
+		VectorDimension: 1024,
+		IsDefault:      true,
+	})
+	if err != nil {
+		t.Fatalf("期望无错误, got %v", err)
+	}
+
+	// 验证
+	configs, _ = svc.ListEmbeddingConfigs()
+	if configs[0].Name != "更新后配置" {
+		t.Errorf("期望名称 '更新后配置', got '%s'", configs[0].Name)
+	}
+	if configs[0].ModelType != 2 {
+		t.Errorf("期望 model_type=2, got %d", configs[0].ModelType)
+	}
+}
+
+// TestKnowledgeService_ListEmbeddingConfigs_Empty 无配置时返回空列表。
+func TestKnowledgeService_ListEmbeddingConfigs_Empty(t *testing.T) {
+	svc, _ := setupKnowledgeService(t)
+
+	configs, err := svc.ListEmbeddingConfigs()
+	if err != nil {
+		t.Fatalf("期望无错误, got %v", err)
+	}
+	if len(configs) != 0 {
+		t.Errorf("期望空列表, got %d", len(configs))
 	}
 }

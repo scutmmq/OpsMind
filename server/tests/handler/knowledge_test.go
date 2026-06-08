@@ -82,6 +82,7 @@ func cleanupKnowledgeHandlerTables(t *testing.T) {
 	knowledgeHandlerDB.Exec("DELETE FROM knowledge_chunks")
 	knowledgeHandlerDB.Exec("DELETE FROM knowledge_articles")
 	knowledgeHandlerDB.Exec("DELETE FROM knowledge_bases")
+	knowledgeHandlerDB.Exec("DELETE FROM embedding_configs")
 }
 
 // =============================================================================
@@ -255,6 +256,55 @@ func TestKnowledgeHandler_GetArticleDetail(t *testing.T) {
 
 	if w.Code != 200 {
 		t.Errorf("期望 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// =============================================================================
+// EmbeddingConfig Handler 测试
+// =============================================================================
+
+func TestKnowledgeHandler_CreateEmbeddingConfig(t *testing.T) {
+	cleanupKnowledgeHandlerTables(t)
+	h := setupKnowledgeHandler(t)
+	r := setupGin()
+
+	r.POST("/api/v1/admin/embedding-configs", h.CreateEmbeddingConfig)
+
+	body, _ := json.Marshal(request.CreateEmbeddingConfigRequest{
+		Name:           "Handler Embedding",
+		ModelType:      1,
+		APIEndpoint:    "https://api.example.com",
+		VectorDimension: 1536,
+		IsDefault:      false,
+	})
+	req := httptest.NewRequest("POST", "/api/v1/admin/embedding-configs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Errorf("期望 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestKnowledgeHandler_ListEmbeddingConfigs(t *testing.T) {
+	cleanupKnowledgeHandlerTables(t)
+	h := setupKnowledgeHandler(t)
+	r := setupGin()
+
+	// 预创建配置
+	knowledgeHandlerDB.Create(&model.EmbeddingConfig{
+		Name: "EC1", ModelType: 1, APIEndpoint: "https://a.com", VectorDimension: 768,
+	})
+
+	r.GET("/api/v1/admin/embedding-configs", h.ListEmbeddingConfigs)
+
+	req := httptest.NewRequest("GET", "/api/v1/admin/embedding-configs", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Errorf("期望 200, got %d", w.Code)
 	}
 }
 
