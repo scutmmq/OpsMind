@@ -56,7 +56,7 @@ sequenceDiagram
         MW->>H: RoleHandler.List
         H->>S: List(page, pageSize)
         S->>R: List(page, pageSize)
-        R->>DB: SELECT COUNT(*); SELECT * ORDER BY id DESC LIMIT ? OFFSET ?
+        R->>DB: SELECT COUNT(*) → SELECT * ORDER BY id DESC LIMIT ? OFFSET ?
         DB-->>R: []Role, total
         S-->>H: []Role, total
         H->>H: response.SuccessWithPage
@@ -104,7 +104,7 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     subgraph Input["客户端输入"]
-        A["['ticket:read', 'ticket:write', 'knowledge:read']"]
+        A["[ticket:read, ticket:write, knowledge:read]"]
     end
 
     subgraph Service["RoleService.Create / Update"]
@@ -114,7 +114,7 @@ flowchart LR
     end
 
     subgraph DB["PostgreSQL JSONB"]
-        E["permissions jsonb<br/>'[\"ticket:read\",\"ticket:write\",\"knowledge:read\"]'"]
+        E["permissions jsonb (JSON array stored in DB)"]
     end
 
     subgraph Output["API 响应 (GORM 自动反序列化)"]

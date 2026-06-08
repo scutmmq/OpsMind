@@ -156,7 +156,7 @@ sequenceDiagram
     S->>Hash: HashPassword(newPwd)
     Hash-->>S: bcrypt_hash (cost=10)
 
-    S->>S: user.PasswordHash = newHash; user.FirstLogin = false
+    S->>S: user.PasswordHash = newHash → user.FirstLogin = false
     S->>R: Update(user)
     R->>DB: UPDATE users SET password_hash=?, first_login=false
 

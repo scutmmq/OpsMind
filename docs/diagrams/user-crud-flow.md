@@ -51,7 +51,7 @@ sequenceDiagram
 
         opt len(req.RoleIDs) > 0
             S->>R: AssignRoles(user.ID, roleIDs)
-            R->>DB: BEGIN; DELETE FROM user_roles WHERE user_id=?; INSERT user_roles ...; COMMIT
+            R->>DB: BEGIN → DELETE FROM user_roles WHERE user_id=? → INSERT user_roles → COMMIT
         end
     end
 
