@@ -3,7 +3,7 @@
     <button :disabled="currentPage <= 1" @click="changePage(currentPage - 1)">上一页</button>
     <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
     <button :disabled="currentPage >= totalPages" @click="changePage(currentPage + 1)">下一页</button>
-    <select v-model="pageSize" @change="onPageSizeChange">
+    <select :value="pageSize" @change="onPageSizeChange">
       <option :value="10">10条/页</option>
       <option :value="20">20条/页</option>
       <option :value="50">50条/页</option>
@@ -21,19 +21,19 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:currentPage', page: number): void
-  (e: 'update:pageSize', size: number): void
+  (e: 'update:current-page', page: number): void
+  (e: 'update:page-size', size: number): void
 }>()
 
 const totalPages = computed(() => Math.ceil(props.total / props.pageSize))
 
 const changePage = (page: number) => {
-  emit('update:currentPage', page)
+  emit('update:current-page', page)
 }
 
 const onPageSizeChange = (event: Event) => {
   const target = event.target as HTMLSelectElement
-  emit('update:pageSize', Number(target.value))
+  emit('update:page-size', Number(target.value))
 }
 </script>
 
