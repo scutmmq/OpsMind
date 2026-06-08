@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"opsmind/internal/adapter"
 	"opsmind/internal/config"
 	"opsmind/internal/database"
 	"opsmind/internal/dto/request"
@@ -32,13 +33,16 @@ import (
 
 type handlerMockRagClient struct{}
 
-func (m *handlerMockRagClient) CreateWorkspace(ctx context.Context, name string) (string, error) {
-	return "ws-handler-slug", nil
+func (m *handlerMockRagClient) Query(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
+	return &adapter.RAGQueryResponse{Answer: "mock", Confidence: 0.8}, nil
 }
-func (m *handlerMockRagClient) SyncDocument(ctx context.Context, workspaceSlug, question, answer string) (string, error) {
-	return "doc-loc-handler", nil
+func (m *handlerMockRagClient) CreateWorkspace(ctx context.Context, req adapter.RAGCreateWorkspaceRequest) (*adapter.RAGCreateWorkspaceResponse, error) {
+	return &adapter.RAGCreateWorkspaceResponse{Slug: "ws-handler-slug"}, nil
 }
-func (m *handlerMockRagClient) DisableDocument(ctx context.Context, workspaceSlug, docLocation string) error {
+func (m *handlerMockRagClient) SyncDocument(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error) {
+	return &adapter.RAGSyncResponse{DocumentLocation: "doc-loc-handler"}, nil
+}
+func (m *handlerMockRagClient) DisableDocument(ctx context.Context, req adapter.RAGDisableRequest) error {
 	return nil
 }
 

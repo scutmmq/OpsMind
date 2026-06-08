@@ -12,6 +12,7 @@ import (
 	"errors"
 	"testing"
 
+	"opsmind/internal/adapter"
 	"opsmind/internal/config"
 	"opsmind/internal/database"
 	"opsmind/internal/dto/request"
@@ -27,33 +28,37 @@ import (
 // Mock RagClient
 // =============================================================================
 
-// mockRagClient 实现 service.RagClient 接口用于测试。
+// mockRagClient 实现 adapter.RagClient 接口用于测试。
 type mockRagClient struct {
 	// createWorkspaceFunc 自定义 CreateWorkspace 行为
-	createWorkspaceFunc func(ctx context.Context, name string) (string, error)
+	createWorkspaceFunc func(ctx context.Context, req adapter.RAGCreateWorkspaceRequest) (*adapter.RAGCreateWorkspaceResponse, error)
 	// syncDocumentFunc 自定义 SyncDocument 行为
-	syncDocumentFunc func(ctx context.Context, workspaceSlug, question, answer string) (string, error)
+	syncDocumentFunc func(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error)
 	// disableDocumentFunc 自定义 DisableDocument 行为
-	disableDocumentFunc func(ctx context.Context, workspaceSlug, docLocation string) error
+	disableDocumentFunc func(ctx context.Context, req adapter.RAGDisableRequest) error
 }
 
-func (m *mockRagClient) CreateWorkspace(ctx context.Context, name string) (string, error) {
+func (m *mockRagClient) Query(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
+	return &adapter.RAGQueryResponse{Answer: "mock answer", Confidence: 0.8}, nil
+}
+
+func (m *mockRagClient) CreateWorkspace(ctx context.Context, req adapter.RAGCreateWorkspaceRequest) (*adapter.RAGCreateWorkspaceResponse, error) {
 	if m.createWorkspaceFunc != nil {
-		return m.createWorkspaceFunc(ctx, name)
+		return m.createWorkspaceFunc(ctx, req)
 	}
-	return "mock-workspace-" + name, nil
+	return &adapter.RAGCreateWorkspaceResponse{Slug: "mock-workspace-" + req.Name, ID: 1}, nil
 }
 
-func (m *mockRagClient) SyncDocument(ctx context.Context, workspaceSlug, question, answer string) (string, error) {
+func (m *mockRagClient) SyncDocument(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error) {
 	if m.syncDocumentFunc != nil {
-		return m.syncDocumentFunc(ctx, workspaceSlug, question, answer)
+		return m.syncDocumentFunc(ctx, req)
 	}
-	return "mock-doc-location", nil
+	return &adapter.RAGSyncResponse{DocumentLocation: "mock-doc-location"}, nil
 }
 
-func (m *mockRagClient) DisableDocument(ctx context.Context, workspaceSlug, docLocation string) error {
+func (m *mockRagClient) DisableDocument(ctx context.Context, req adapter.RAGDisableRequest) error {
 	if m.disableDocumentFunc != nil {
-		return m.disableDocumentFunc(ctx, workspaceSlug, docLocation)
+		return m.disableDocumentFunc(ctx, req)
 	}
 	return nil
 }
@@ -145,9 +150,9 @@ func TestKnowledgeService_CreateKB(t *testing.T) {
 	svc, mockRAG := setupKnowledgeService(t)
 
 	var capturedName string
-	mockRAG.createWorkspaceFunc = func(ctx context.Context, name string) (string, error) {
-		capturedName = name
-		return "rag-ws-slug", nil
+	mockRAG.createWorkspaceFunc = func(ctx context.Context, req adapter.RAGCreateWorkspaceRequest) (*adapter.RAGCreateWorkspaceResponse, error) {
+		capturedName = req.Name
+		return &adapter.RAGCreateWorkspaceResponse{Slug: "rag-ws-slug"}, nil
 	}
 
 	err := svc.CreateKB(request.CreateKBRequest{
@@ -176,8 +181,8 @@ func TestKnowledgeService_CreateKB(t *testing.T) {
 func TestKnowledgeService_CreateKB_RagFailure(t *testing.T) {
 	svc, mockRAG := setupKnowledgeService(t)
 
-	mockRAG.createWorkspaceFunc = func(ctx context.Context, name string) (string, error) {
-		return "", errors.New("connection refused")
+	mockRAG.createWorkspaceFunc = func(ctx context.Context, req adapter.RAGCreateWorkspaceRequest) (*adapter.RAGCreateWorkspaceResponse, error) {
+		return nil, errors.New("connection refused")
 	}
 
 	err := svc.CreateKB(request.CreateKBRequest{
@@ -433,9 +438,9 @@ func TestKnowledgeService_Publish(t *testing.T) {
 	article := createTestArticle(t, svc, kb.ID, 3) // 已通过
 
 	var synced bool
-	mockRAG.syncDocumentFunc = func(ctx context.Context, workspaceSlug, question, answer string) (string, error) {
+	mockRAG.syncDocumentFunc = func(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error) {
 		synced = true
-		return "doc-loc-123", nil
+		return &adapter.RAGSyncResponse{DocumentLocation: "doc-loc-123"}, nil
 	}
 
 	err := svc.Publish(article.ID, 2)
@@ -466,8 +471,8 @@ func TestKnowledgeService_Publish_SyncFailed(t *testing.T) {
 	kb := createTestKB(t, svc, "同步失败测试")
 	article := createTestArticle(t, svc, kb.ID, 3) // 已通过
 
-	mockRAG.syncDocumentFunc = func(ctx context.Context, workspaceSlug, question, answer string) (string, error) {
-		return "", errors.New("rag timeout")
+	mockRAG.syncDocumentFunc = func(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error) {
+		return nil, errors.New("rag timeout")
 	}
 
 	err := svc.Publish(article.ID, 2)
@@ -495,8 +500,8 @@ func TestKnowledgeService_Disable(t *testing.T) {
 	knowledgeSvcDB.Model(&article).Update("rag_document_location", "old-loc")
 
 	var deletedLocation string
-	mockRAG.disableDocumentFunc = func(ctx context.Context, workspaceSlug, docLocation string) error {
-		deletedLocation = docLocation
+	mockRAG.disableDocumentFunc = func(ctx context.Context, req adapter.RAGDisableRequest) error {
+		deletedLocation = req.DocumentLocations[0]
 		return nil
 	}
 
@@ -523,7 +528,7 @@ func TestKnowledgeService_Disable_NoDocLocation(t *testing.T) {
 	article := createTestArticle(t, svc, kb.ID, 4) // 已发布，无 rag_document_location
 
 	var ragCalled bool
-	mockRAG.disableDocumentFunc = func(ctx context.Context, workspaceSlug, docLocation string) error {
+	mockRAG.disableDocumentFunc = func(ctx context.Context, req adapter.RAGDisableRequest) error {
 		ragCalled = true
 		return nil
 	}
@@ -544,9 +549,9 @@ func TestKnowledgeService_RetrySync(t *testing.T) {
 	article := createTestArticle(t, svc, kb.ID, 4) // 已发布
 
 	var retryCalled bool
-	mockRAG.syncDocumentFunc = func(ctx context.Context, workspaceSlug, question, answer string) (string, error) {
+	mockRAG.syncDocumentFunc = func(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error) {
 		retryCalled = true
-		return "retry-doc-loc", nil
+		return &adapter.RAGSyncResponse{DocumentLocation: "retry-doc-loc"}, nil
 	}
 
 	err := svc.RetrySync(article.ID)

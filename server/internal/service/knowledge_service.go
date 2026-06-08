@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"opsmind/internal/adapter"
 	"opsmind/internal/dto/request"
 	"opsmind/internal/dto/response"
 	"opsmind/internal/model"
@@ -23,27 +24,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// RagClient 定义 RAG 服务适配器接口。
-//
-// KnowledgeService 依赖此接口完成 AnythingLLM workspace 和文档管理。
-// 具体实现在 adapter 包中（Task 20），此处仅定义接口以支持依赖注入和测试 mock。
-type RagClient interface {
-	// CreateWorkspace 在 AnythingLLM 中创建工作区。
-	CreateWorkspace(ctx context.Context, name string) (string, error)
-	// SyncDocument 同步文档到 AnythingLLM，返回 documentLocation。
-	SyncDocument(ctx context.Context, workspaceSlug, question, answer string) (string, error)
-	// DisableDocument 从 AnythingLLM 中停用文档。
-	DisableDocument(ctx context.Context, workspaceSlug, docLocation string) error
-}
-
 // KnowledgeService 知识库管理服务。
 type KnowledgeService struct {
-	repo    *repository.KnowledgeRepo
-	rag     RagClient
+	repo *repository.KnowledgeRepo
+	rag  adapter.RagClient
 }
 
 // NewKnowledgeService 创建 KnowledgeService 实例。
-func NewKnowledgeService(repo *repository.KnowledgeRepo, rag RagClient) *KnowledgeService {
+func NewKnowledgeService(repo *repository.KnowledgeRepo, rag adapter.RagClient) *KnowledgeService {
 	return &KnowledgeService{repo: repo, rag: rag}
 }
 
@@ -55,7 +43,9 @@ func NewKnowledgeService(repo *repository.KnowledgeRepo, rag RagClient) *Knowled
 func (s *KnowledgeService) CreateKB(req request.CreateKBRequest, userID int64) error {
 	// 调用 RagClient 创建工作区
 	ctx := context.Background()
-	slug, err := s.rag.CreateWorkspace(ctx, req.Name)
+	wsResp, err := s.rag.CreateWorkspace(ctx, adapter.RAGCreateWorkspaceRequest{
+		Name: req.Name,
+	})
 	if err != nil {
 		return AppError{Code: errcode.ErrRAGUnavailable, Message: "创建 RAG 工作区失败: " + err.Error()}
 	}
@@ -63,7 +53,7 @@ func (s *KnowledgeService) CreateKB(req request.CreateKBRequest, userID int64) e
 	kb := &model.KnowledgeBase{
 		Name:             req.Name,
 		Description:      req.Description,
-		RAGWorkspaceSlug: slug,
+		RAGWorkspaceSlug: wsResp.Slug,
 		EmbeddingModel:   req.EmbeddingModel,
 		CreatedBy:        userID,
 	}
@@ -238,12 +228,19 @@ func (s *KnowledgeService) Publish(id int64, publisherID int64) error {
 
 	// 同步到 RAG
 	ctx := context.Background()
-	docLocation, syncErr := s.rag.SyncDocument(ctx, article.KnowledgeBase.RAGWorkspaceSlug, article.Question, article.Answer)
+	syncResp, syncErr := s.rag.SyncDocument(ctx, adapter.RAGSyncRequest{
+		WorkspaceSlug: article.KnowledgeBase.RAGWorkspaceSlug,
+		Title:         article.Question,
+		Content:       article.Answer,
+		Mode:          "raw-text",
+	})
 
 	// 更新文章
 	article.Status = 4
 	article.PublishedBy = &publisherID
-	article.RAGDocumentLocation = docLocation
+	if syncErr == nil {
+		article.RAGDocumentLocation = syncResp.DocumentLocation
+	}
 	if err := s.repo.UpdateArticle(article); err != nil {
 		return err
 	}
@@ -271,7 +268,10 @@ func (s *KnowledgeService) Disable(id int64) error {
 	// 调用 RagClient 停用文档
 	if article.RAGDocumentLocation != "" {
 		ctx := context.Background()
-		_ = s.rag.DisableDocument(ctx, article.KnowledgeBase.RAGWorkspaceSlug, article.RAGDocumentLocation)
+		_ = s.rag.DisableDocument(ctx, adapter.RAGDisableRequest{
+			WorkspaceSlug:     article.KnowledgeBase.RAGWorkspaceSlug,
+			DocumentLocations: []string{article.RAGDocumentLocation},
+		})
 	}
 
 	// 更新文章状态
@@ -297,11 +297,16 @@ func (s *KnowledgeService) RetrySync(id int64) error {
 	}
 
 	ctx := context.Background()
-	docLocation, syncErr := s.rag.SyncDocument(ctx, article.KnowledgeBase.RAGWorkspaceSlug, article.Question, article.Answer)
+	syncResp, syncErr := s.rag.SyncDocument(ctx, adapter.RAGSyncRequest{
+		WorkspaceSlug: article.KnowledgeBase.RAGWorkspaceSlug,
+		Title:         article.Question,
+		Content:       article.Answer,
+		Mode:          "raw-text",
+	})
 
 	// 更新 rag_document_location
-	if docLocation != "" {
-		article.RAGDocumentLocation = docLocation
+	if syncErr == nil && syncResp.DocumentLocation != "" {
+		article.RAGDocumentLocation = syncResp.DocumentLocation
 		_ = s.repo.UpdateArticle(article)
 	}
 
