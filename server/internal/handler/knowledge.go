@@ -372,19 +372,12 @@ func (h *KnowledgeHandler) DeleteEmbeddingConfig(c *gin.Context) {
 
 // getCurrentUserID 从 Gin context 中获取当前用户 ID。
 //
-// 在实际环境中由 JWTAuth 中间件注入。
+// JWTAuth 中间件将当前用户 ID 以 int64 类型写入 context，key 为 "userID"。
 // 测试环境中可能不存在，返回 0 作为默认值。
 func getCurrentUserID(c *gin.Context) int64 {
-	if user, exists := c.Get("currentUser"); exists {
-		if claims, ok := user.(map[string]interface{}); ok {
-			if id, ok := claims["user_id"]; ok {
-				switch v := id.(type) {
-				case float64:
-					return int64(v)
-				case int64:
-					return v
-				}
-			}
+	if val, exists := c.Get("userID"); exists {
+		if id, ok := val.(int64); ok {
+			return id
 		}
 	}
 	return 0
