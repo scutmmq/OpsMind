@@ -321,11 +321,13 @@ func (c *AnythingLLMClient) SyncDocument(ctx context.Context, req RAGSyncRequest
 	// AnythingLLM raw-text API 要求 metadata.title 为必填字段（见 anything-llm source:
 	// server/endpoints/api/document/index.js:569-576）
 	payload := map[string]interface{}{
-		"textContent":   req.Content,
-		"workspaceSlug": req.WorkspaceSlug,
+		"textContent": req.Content,
 		"metadata": map[string]string{
 			"title": req.Title,
 		},
+		// addToWorkspaces 将文档关联到 workspace 并触发 embedding
+		// (workspaceSlug 是 query 参数不是 body 字段, document/index.js:610-614)
+		"addToWorkspaces": req.WorkspaceSlug,
 	}
 
 	body, err := json.Marshal(payload)
