@@ -82,6 +82,7 @@ func main() {
 	knowledgeService := service.NewKnowledgeService(knowledgeRepo, ragClient)
 	chatService := service.NewChatService(knowledgeRepo, chatRepo, ragClient)
 	messageService := service.NewMessageService(messageRepo)
+	dashboardService := service.NewDashboardService(db)
 	_ = configRepo // 待 T34 配置 Service 使用
 
 	// 7. 初始化 Handler 层
@@ -92,6 +93,7 @@ func main() {
 	knowledgeHandler := handler.NewKnowledgeHandler(knowledgeService)
 	chatHandler := handler.NewChatHandler(chatService)
 	messageHandler := handler.NewMessageHandler(messageService)
+	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 
 	// 8. 初始化后台调度器
 	scheduler := service.NewScheduler(ticketRepo)
@@ -106,6 +108,7 @@ func main() {
 		Knowledge: knowledgeHandler,
 		Chat:      chatHandler,
 		Message:   messageHandler,
+		Dashboard: dashboardHandler,
 	})
 
 	// 10. 创建 HTTP Server（支持优雅关闭）

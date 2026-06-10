@@ -101,9 +101,14 @@ func registerAdminRoutes(rg *gin.RouterGroup, h *Handlers) {
 	rg.GET("/menus", placeholder())
 	rg.PUT("/roles/:id/menus", placeholder())
 
-	// 数据看板（占位 — T32 实现）
-	rg.GET("/dashboard/stats", placeholder())
-	rg.GET("/dashboard/trends", placeholder())
+	// 数据看板（T32 — 已实现）
+	if h != nil && h.Dashboard != nil {
+		rg.GET("/dashboard/stats", h.Dashboard.GetStats)
+		rg.GET("/dashboard/trends", h.Dashboard.GetTrends)
+	} else {
+		rg.GET("/dashboard/stats", placeholder())
+		rg.GET("/dashboard/trends", placeholder())
+	}
 
 	// 操作日志（占位 — T33 实现）
 	rg.GET("/audit-logs", placeholder())
