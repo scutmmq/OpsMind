@@ -11,10 +11,16 @@ import "github.com/gin-gonic/gin"
 // 门户端面向报障人用户，提供智能问答、申告提交、进度查询等功能。
 // 路由列表与 TECH.md §5.2 门户端对齐。
 func registerPortalRoutes(rg *gin.RouterGroup, h *Handlers) {
-	// 智能问答（占位 — T26 实现）
-	rg.POST("/chat-sessions", placeholder())
-	rg.GET("/chat-sessions/:id", placeholder())
-	rg.POST("/chat-sessions/:id/feedback", placeholder())
+	// 智能问答（T26 — 已实现）
+	if h != nil && h.Chat != nil {
+		rg.POST("/chat-sessions", h.Chat.CreateChatSession)
+		rg.GET("/chat-sessions/:id", h.Chat.GetChatDetail)
+		rg.POST("/chat-sessions/:id/feedback", h.Chat.SubmitFeedback)
+	} else {
+		rg.POST("/chat-sessions", placeholder())
+		rg.GET("/chat-sessions/:id", placeholder())
+		rg.POST("/chat-sessions/:id/feedback", placeholder())
+	}
 
 	// 申告管理（T24 — 已实现）
 	if h != nil && h.Ticket != nil {
@@ -29,8 +35,14 @@ func registerPortalRoutes(rg *gin.RouterGroup, h *Handlers) {
 		rg.PATCH("/tickets/:id/supplement", placeholder())
 	}
 
-	// 站内消息（占位 — T29 实现）
-	rg.GET("/messages", placeholder())
-	rg.PATCH("/messages/:id/read", placeholder())
-	rg.GET("/messages/unread-count", placeholder())
+	// 站内消息（T29 — 已实现）
+	if h != nil && h.Message != nil {
+		rg.GET("/messages", h.Message.ListMessages)
+		rg.PUT("/messages/:id/read", h.Message.MarkAsRead)
+		rg.GET("/messages/unread-count", h.Message.CountUnread)
+	} else {
+		rg.GET("/messages", placeholder())
+		rg.PUT("/messages/:id/read", placeholder())
+		rg.GET("/messages/unread-count", placeholder())
+	}
 }

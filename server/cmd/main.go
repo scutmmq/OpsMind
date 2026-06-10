@@ -5,9 +5,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"opsmind/internal/adapter"
 	"opsmind/internal/config"
@@ -61,39 +66,92 @@ func main() {
 	slog.Info("RagClient 已初始化", "base_url", cfg.AnythingLLM.BaseURL)
 
 	// 5. 初始化 Repository 层
+	configRepo := repository.NewConfigRepo(db)
 	userRepo := repository.NewUserRepo(db)
 	roleRepo := repository.NewRoleRepo(db)
+	ticketRepo := repository.NewTicketRepo(db)
 	knowledgeRepo := repository.NewKnowledgeRepo(db)
-	// 后续里程碑补充：configRepo, ticketRepo, chatRepo, auditRepo, messageRepo
+	chatRepo := repository.NewChatRepo(db)
+	messageRepo := repository.NewMessageRepo(db)
 
 	// 6. 初始化 Service 层
 	authService := service.NewAuthService(userRepo, db)
 	userService := service.NewUserService(userRepo, db)
 	roleService := service.NewRoleService(roleRepo, db)
+	ticketService := service.NewTicketService(ticketRepo)
 	knowledgeService := service.NewKnowledgeService(knowledgeRepo, ragClient)
-	// 后续里程碑补充：ticketService, chatService, dashboardService, configService, messageService
+	chatService := service.NewChatService(knowledgeRepo, chatRepo, ragClient)
+	messageService := service.NewMessageService(messageRepo)
+	_ = configRepo // 待 T34 配置 Service 使用
 
 	// 7. 初始化 Handler 层
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	roleHandler := handler.NewRoleHandler(roleService)
+	ticketHandler := handler.NewTicketHandler(ticketService)
 	knowledgeHandler := handler.NewKnowledgeHandler(knowledgeService)
-	// 后续里程碑补充：ticketHandler, chatHandler, dashboardHandler, configHandler, messageHandler, auditHandler
+	chatHandler := handler.NewChatHandler(chatService)
+	messageHandler := handler.NewMessageHandler(messageService)
 
-	// 8. 设置路由
+	// 8. 初始化后台调度器
+	scheduler := service.NewScheduler(ticketRepo)
+	slog.Info("后台调度器已创建")
+
+	// 9. 设置路由
 	r := router.Setup(cfg, &router.Handlers{
 		Auth:      authHandler,
 		User:      userHandler,
 		Role:      roleHandler,
+		Ticket:    ticketHandler,
 		Knowledge: knowledgeHandler,
+		Chat:      chatHandler,
+		Message:   messageHandler,
 	})
 
-	// 9. 启动 HTTP 服务
+	// 10. 创建 HTTP Server（支持优雅关闭）
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	slog.Info("HTTP 服务已启动", "addr", addr)
-
-	if err := r.Run(addr); err != nil {
-		slog.Error("HTTP 服务启动失败", "error", err)
-		os.Exit(1)
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
+
+	// 11. 启动调度器
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	scheduler.Start(ctx)
+
+	// 12. 启动 HTTP 服务（goroutine）
+	go func() {
+		slog.Info("HTTP 服务已启动", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("HTTP 服务启动失败", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// 13. 等待退出信号（SIGINT / SIGTERM）
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-quit
+	slog.Info("收到退出信号，开始优雅关闭...", "signal", sig)
+
+	// 14. 优雅关闭
+	// 先停止调度器
+	scheduler.Stop()
+	cancel()
+
+	// 再关闭 HTTP 服务（最多等待 10 秒）
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("HTTP 服务关闭失败", "error", err)
+	} else {
+		slog.Info("HTTP 服务已关闭")
+	}
+
+	slog.Info("OpsMind 服务已停止")
 }
