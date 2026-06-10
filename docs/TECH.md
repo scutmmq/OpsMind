@@ -2,8 +2,9 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v1.2 |
-| 日期 | 2026-06-08 |
+| 文档版本 | v1.3 |
+| 日期 | 2026-06-10 |
+| 变更说明 | 同步 M5 全部实现：补全 API 端点、修正前端路由、更新文件结构 |
 | 关联文档 | [PRD](PRD.md)、[Design System](prompts/DESIGN-linear.app.md)、[AnythingLLM 集成方案](ANYTHINGLLM_AI_INTEGRATION.md) |
 
 ---
@@ -252,8 +253,11 @@ OpsMind/
 ├── docs/                           # 文档
 │   ├── PRD.md                      # 产品需求文档
 │   ├── TECH.md                     # 技术架构文档（本文档）
-│   └── prompts/                    # 设计约束和提示词
-│       └── DESIGN-linear.app.md    # Linear Design 系统约束
+│   ├── PLAN.md                     # 实施计划（38 任务/6 里程碑）
+│   ├── ANYTHINGLLM_AI_INTEGRATION.md # AnythingLLM 集成方案
+│   ├── prompts/                    # 设计约束和提示词
+│   │   └── DESIGN-linear.app.md    # Linear Design 系统约束
+│   └── diagrams/                   # 架构和流程图表
 │
 ├── server/                         # Go 后端
 │   ├── cmd/
@@ -277,23 +281,31 @@ OpsMind/
 │   │   │   ├── ticket.go
 │   │   │   ├── knowledge.go
 │   │   │   ├── user.go
+│   │   │   ├── role.go
 │   │   │   ├── dashboard.go
-│   │   │   └── config.go
+│   │   │   ├── config.go
+│   │   │   ├── message.go
+│   │   │   └── audit.go
 │   │   ├── service/                # Service 层（业务逻辑）
 │   │   │   ├── auth_service.go
+│   │   │   ├── user_service.go
+│   │   │   ├── role_service.go
 │   │   │   ├── chat_service.go
 │   │   │   ├── ticket_service.go
 │   │   │   ├── knowledge_service.go
-│   │   │   ├── user_service.go
 │   │   │   ├── dashboard_service.go
-│   │   │   └── config_service.go
+│   │   │   ├── config_service.go
+│   │   │   ├── message_service.go
+│   │   │   └── scheduler.go
 │   │   ├── repository/             # Repository 层（数据访问）
 │   │   │   ├── user_repo.go
+│   │   │   ├── role_repo.go
 │   │   │   ├── ticket_repo.go
 │   │   │   ├── knowledge_repo.go
 │   │   │   ├── chat_repo.go
 │   │   │   ├── audit_repo.go
-│   │   │   └── config_repo.go
+│   │   │   ├── config_repo.go
+│   │   │   └── message_repo.go
 │   │   ├── model/                  # 数据模型（GORM）
 │   │   │   ├── user.go             # User/Role/Menu/UserRole/RoleMenu 数据模型
 │   │   │   ├── ticket.go           # Ticket/TicketRecord 数据模型
@@ -342,7 +354,8 @@ OpsMind/
 │   │   │   ├── ticket.ts
 │   │   │   ├── knowledge.ts
 │   │   │   ├── user.ts
-│   │   │   └── dashboard.ts
+│   │   │   ├── dashboard.ts
+│   │   │   └── message.ts
 │   │   ├── views/                  # 页面
 │   │   │   ├── portal/             # 门户端页面
 │   │   │   │   ├── Chat.vue        # 智能问答
@@ -358,6 +371,7 @@ OpsMind/
 │   │   │   │   ├── RoleManage.vue  # 角色管理
 │   │   │   │   ├── AuditLog.vue    # 审计日志
 │   │   │   │   ├── ModelConfig.vue # 模型配置
+│   │   │   │   ├── EmbeddingConfig.vue # Embedding 配置
 │   │   │   │   └── SystemConfig.vue # 系统配置
 │   │   │   └── auth/
 │   │   │       ├── Login.vue       # 登录
@@ -792,15 +806,15 @@ CREATE INDEX idx_messages_is_read ON messages(user_id, is_read);
 | GET | `/knowledge-bases` | 知识库列表 | 知识库管理员 |
 | POST | `/knowledge-bases` | 创建知识库 | 知识库管理员 |
 | PUT | `/knowledge-bases/:id` | 更新知识库 | 知识库管理员 |
-| GET | `/knowledge-articles` | 知识条目列表 | 知识库管理员 |
-| POST | `/knowledge-articles` | 创建知识条目 | 知识库管理员 |
-| PUT | `/knowledge-articles/:id` | 更新知识条目 | 知识库管理员 |
-| POST | `/knowledge-articles/:id/submit-review` | 提交审核 | 知识库管理员 |
-| POST | `/knowledge-articles/:id/review` | 审核知识 | 知识库管理员（非创建人） |
-| POST | `/knowledge-articles/:id/publish` | 发布知识 | 知识库管理员 |
-| POST | `/knowledge-articles/:id/disable` | 停用知识 | 知识库管理员 |
-| POST | `/knowledge-articles/:id/retry-sync` | 重试同步 | 知识库管理员 |
-
+| GET | `/knowledge-bases/:kb_id/articles` | 知识条目列表 | 知识库管理员 |
+| POST | `/knowledge-bases/:kb_id/articles` | 创建知识条目 | 知识库管理员 |
+| GET | `/articles/:id` | 获取知识条目详情 | 知识库管理员 |
+| PUT | `/articles/:id` | 更新知识条目 | 知识库管理员 |
+| POST | `/articles/:id/submit-review` | 提交审核 | 知识库管理员 |
+| POST | `/articles/:id/review` | 审核知识 | 知识库管理员（非创建人） |
+| POST | `/articles/:id/publish` | 发布知识 | 知识库管理员 |
+| POST | `/articles/:id/disable` | 停用知识 | 知识库管理员 |
+| POST | `/articles/:id/retry-sync` | 重试同步 | 知识库管理员 |
 **审核业务规则（Service 层强制校验）：**
 - 审核人必须具有"知识库管理员"角色（RBAC 中间件校验）。
 - 审核人不能是知识条目的创建人（`KnowledgeService.Review` 方法内校验 `article.CreatedBy != currentUser.ID`，违反时返回错误码 10003）。
@@ -850,6 +864,7 @@ CREATE INDEX idx_messages_is_read ON messages(user_id, is_read);
 | GET | `/embedding-configs` | embedding 模型列表 | 系统管理员 |
 | POST | `/embedding-configs` | 添加 embedding 模型 | 系统管理员 |
 | PUT | `/embedding-configs/:id` | 更新 embedding 模型 | 系统管理员 |
+| DELETE | `/embedding-configs/:id` | 删除 embedding 模型 | 系统管理员 |
 
 ### 5.3 关键接口详细设计
 
@@ -970,14 +985,13 @@ CREATE INDEX idx_messages_is_read ON messages(user_id, is_read);
 /admin/tickets                  // 申告列表
 /admin/tickets/:id              // 申告处理
 /admin/knowledge                // 知识库列表
-/admin/knowledge/:id/articles   // 知识条目
-/admin/knowledge/articles/:id   // 知识编辑
+/admin/knowledge/:id            // 知识编辑
 /admin/users                    // 用户管理
 /admin/roles                    // 角色管理
 /admin/audit-logs               // 审计日志
-/admin/config/model             // 模型配置
-/admin/config/embedding         // embedding 配置
-/admin/config/system            // 系统配置
+/admin/model-config             // 模型配置
+/admin/embedding-config         // embedding 配置
+/admin/system-config            // 系统配置
 
 // P2 扩展路由占位（后续里程碑实现）
 // /admin/inspection              // 智能巡检

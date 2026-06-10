@@ -1156,16 +1156,16 @@ Bucket 规划：`opsmind-attachments`（申告附件）、`opsmind-documents`（
 
 ---
 
-### Task 32: 数据看板 Service + Handler
+### Task 32: 数据看板 Service + Handler ✅
 
 **Files:**
-- Create: `server/internal/dto/request/dashboard.go`
-- Create: `server/internal/dto/response/dashboard.go`
-- Create: `server/internal/service/dashboard_service.go`
-- Create: `server/internal/handler/dashboard.go`
-- Create: `src/api/dashboard.ts`
-- Create: `src/views/admin/Dashboard.vue`
-- Test: `server/tests/service/dashboard_service_test.go`
+- Create: `server/internal/dto/request/dashboard.go` ✅
+- Create: `server/internal/dto/response/dashboard.go` ✅
+- Create: `server/internal/service/dashboard_service.go` ✅
+- Create: `server/internal/handler/dashboard.go` ✅
+- Create: `src/api/dashboard.ts` ✅
+- Modify: `src/views/admin/Dashboard.vue` ✅（全功能实现：统计卡片/柱状趋势图/日期选择/空-加载-错误三态）
+- Test: `server/tests/service/dashboard_service_test.go` ✅（6 个测试：统计/空数据/趋势/日期范围/无效粒度/空范围）
 
 **说明：**
 
@@ -1192,13 +1192,14 @@ Bucket 规划：`opsmind-attachments`（申告附件）、`opsmind-documents`（
 
 ---
 
-### Task 33: 审计日志 Repository + 查询
+### Task 33: 审计日志 Repository + 查询 ✅
 
 **Files:**
-- Create: `server/internal/repository/audit_repo.go`
-- Create: `server/internal/handler/audit.go`
-- Create: `server/internal/dto/request/audit.go`
-- Create: `server/internal/dto/response/audit.go`
+- Create: `server/internal/repository/audit_repo.go` ✅
+- Create: `server/internal/handler/audit.go` ✅
+- Create: `server/internal/dto/request/audit.go` ✅
+- Create: `server/internal/dto/response/audit.go` ✅
+- Test: `server/tests/repository/audit_repo_test.go` ✅（7 个测试：Create/全量/按操作人/按操作/组合/分页/空数据）
 
 **说明：**
 
@@ -1219,12 +1220,12 @@ Bucket 规划：`opsmind-attachments`（申告附件）、`opsmind-documents`（
 
 ---
 
-### Task 34: 系统配置 Service + Handler
+### Task 34: 系统配置 Service + Handler ✅
 
 **Files:**
-- Create: `server/internal/service/config_service.go`
-- Modify: `server/internal/handler/config.go`（或从 knowledge.go 拆分）
-- Test: `server/tests/service/config_service_test.go`
+- Create: `server/internal/service/config_service.go` ✅
+- Create: `server/internal/handler/config.go` ✅
+- Test: `server/tests/service/config_service_test.go` ✅（13 个测试：6 Repo + 7 Service — 获取/不存在/JSON对象/创建/更新/字符串/nil拒绝）
 
 **说明：**
 
@@ -1246,20 +1247,24 @@ Bucket 规划：`opsmind-attachments`（申告附件）、`opsmind-documents`（
 
 ---
 
-### Task 35: Vue 看板和配置页面完善
+### Task 35: Vue 看板和配置页面完善 ✅
 
 **Files:**
-- Modify: `src/views/admin/Dashboard.vue`
-- Modify: `src/views/admin/ModelConfig.vue`
-- Modify: `src/views/admin/EmbeddingConfig.vue`
-- Modify: `src/views/admin/SystemConfig.vue`
+- Modify: `src/views/admin/Dashboard.vue` ✅（全功能：7 统计卡片/CSS 柱状趋势图/日期选择/空-加载-错误三态）
+- Modify: `src/views/admin/ModelConfig.vue` ✅（全功能：Top K + 置信度双滑块/实时数值/保存 Toast）
+- Modify: `src/views/admin/EmbeddingConfig.vue` ✅（全功能：列表+新增/编辑弹窗+类型切换+删除确认对话框+Toast）
+- Modify: `src/views/admin/SystemConfig.vue` ✅（全功能：表格展示+行内编辑+保存/取消+值类型自动识别+Toast）
+- Create: `src/api/dashboard.ts` ✅（看板 API 封装：getStats/getTrends）
 
 **说明：**
 
-完善 M5 中创建的前端页面，处理边界情况：
-- 看板数据为空时的占位展示
-- 配置保存成功/失败的 Toast 提示
-- Embedding 配置删除确认
+完成 M5 中创建的前端页面，处理边界情况：
+- ✅ 看板数据为空时的占位展示「暂无趋势数据」
+- ✅ 配置保存成功/失败的 Toast 提示（3 秒自动消失，绿/红）
+- ✅ Embedding 配置删除确认对话框（不可撤销提示）
+- ✅ 加载中状态（居中 loading 提示）
+- ✅ API 错误处理（错误消息 + 重试按钮 / Toast 错误提示）
+- 全部遵循 Linear Design 暗色主题
 
 ---
 
