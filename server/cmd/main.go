@@ -73,6 +73,7 @@ func main() {
 	knowledgeRepo := repository.NewKnowledgeRepo(db)
 	chatRepo := repository.NewChatRepo(db)
 	messageRepo := repository.NewMessageRepo(db)
+	auditRepo := repository.NewAuditRepo(db)
 
 	// 6. 初始化 Service 层
 	authService := service.NewAuthService(userRepo, db)
@@ -94,6 +95,7 @@ func main() {
 	chatHandler := handler.NewChatHandler(chatService)
 	messageHandler := handler.NewMessageHandler(messageService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
+	auditHandler := handler.NewAuditHandler(auditRepo, db)
 
 	// 8. 初始化后台调度器
 	scheduler := service.NewScheduler(ticketRepo)
@@ -109,6 +111,7 @@ func main() {
 		Chat:      chatHandler,
 		Message:   messageHandler,
 		Dashboard: dashboardHandler,
+		Audit:     auditHandler,
 	})
 
 	// 10. 创建 HTTP Server（支持优雅关闭）

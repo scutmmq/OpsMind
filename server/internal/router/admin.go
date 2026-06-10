@@ -110,8 +110,12 @@ func registerAdminRoutes(rg *gin.RouterGroup, h *Handlers) {
 		rg.GET("/dashboard/trends", placeholder())
 	}
 
-	// 操作日志（占位 — T33 实现）
-	rg.GET("/audit-logs", placeholder())
+	// 操作日志（T33 — 已实现）
+	if h != nil && h.Audit != nil {
+		rg.GET("/audit-logs", h.Audit.List)
+	} else {
+		rg.GET("/audit-logs", placeholder())
+	}
 
 	// Embedding 配置（T19 — 已实现）
 	if h != nil && h.Knowledge != nil {

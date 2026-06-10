@@ -30,6 +30,7 @@ type Handlers struct {
 	Chat      *handler.ChatHandler
 	Message   *handler.MessageHandler
 	Dashboard *handler.DashboardHandler
+	Audit     *handler.AuditHandler
 }
 
 // Setup 初始化 Gin 引擎并注册所有路由。
