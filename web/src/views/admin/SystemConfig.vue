@@ -1,9 +1,303 @@
 <template>
   <div class="system-config-page">
-    <h1>系统配置</h1>
+    <div class="page-header">
+      <h1 class="page-title">系统配置</h1>
+    </div>
+
+    <!-- 加载中 -->
+    <div v-if="loading" class="loading-state">
+      <p>加载配置中...</p>
+    </div>
+
+    <!-- 配置为空 -->
+    <div v-else-if="configItems.length === 0" class="empty-state">
+      <p>暂无可配置项</p>
+    </div>
+
+    <!-- 配置列表 -->
+    <div v-else class="config-table-wrapper">
+      <table class="config-table">
+        <thead>
+          <tr>
+            <th>配置项</th>
+            <th>当前值</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in configItems" :key="item.key">
+            <td>
+              <div class="key-name">{{ item.key }}</div>
+              <div class="key-desc" v-if="item.key === 'ai.default_top_k'">RAG 检索 Top K 数量</div>
+              <div class="key-desc" v-else-if="item.key === 'ai.confidence_threshold'">AI 置信度阈值</div>
+            </td>
+            <td class="value-cell">
+              <span v-if="editingKey !== item.key" class="value-display">{{ formatValue(item.value) }}</span>
+              <input
+                v-else
+                v-model="editValue"
+                class="value-input"
+                :type="typeof (item as any)._parsed === 'number' ? 'number' : 'text'"
+              />
+            </td>
+            <td class="action-cell">
+              <template v-if="editingKey !== item.key">
+                <button class="btn-edit" @click="startEdit(item)">编辑</button>
+              </template>
+              <template v-else>
+                <button
+                  class="btn-save-inline"
+                  :disabled="saving"
+                  @click="handleSave(item.key)"
+                >
+                  {{ saving ? '保存中' : '保存' }}
+                </button>
+                <button class="btn-cancel-inline" @click="cancelEdit">取消</button>
+              </template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Toast 提示 -->
+    <div v-if="toast.message" :class="['toast', toast.type]">
+      {{ toast.message }}
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-// 系统配置页占位组件
+import { ref, onMounted } from 'vue'
+import request from '@/utils/request'
+
+interface ConfigItem {
+  key: string
+  value: any
+  _parsed?: any
+}
+
+const loading = ref(true)
+const saving = ref(false)
+const configItems = ref<ConfigItem[]>([])
+const editingKey = ref('')
+const editValue = ref<any>('')
+const toast = ref<{ message: string; type: string }>({ message: '', type: 'success' })
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+// 可配置的系统配置项
+const KNOWN_KEYS = ['ai.default_top_k', 'ai.confidence_threshold']
+
+onMounted(async () => {
+  await fetchAllConfigs()
+})
+
+function showToast(message: string, type: 'success' | 'error') {
+  toast.value = { message, type }
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toast.value = { message: '', type: 'success' } }, 3000)
+}
+
+async function fetchAllConfigs() {
+  loading.value = true
+  const items: ConfigItem[] = []
+
+  for (const key of KNOWN_KEYS) {
+    try {
+      const res = await request.get(`/api/v1/admin/configs/${key}` as any)
+      const raw = (res as any)
+      const val = raw?.data !== undefined ? raw.data : raw
+      items.push({ key, value: val, _parsed: val })
+    } catch {
+      items.push({ key, value: '(未设置)' })
+    }
+  }
+
+  configItems.value = items
+  loading.value = false
+}
+
+function formatValue(val: any): string {
+  if (val === null || val === undefined) return '(未设置)'
+  if (typeof val === 'object') return JSON.stringify(val)
+  return String(val)
+}
+
+function startEdit(item: ConfigItem) {
+  editingKey.value = item.key
+  editValue.value = item._parsed ?? item.value
+}
+
+function cancelEdit() {
+  editingKey.value = ''
+  editValue.value = ''
+}
+
+async function handleSave(key: string) {
+  saving.value = true
+  try {
+    // 尝试解析数字值
+    let value: any = editValue.value
+    const num = Number(value)
+    if (!isNaN(num) && String(value).trim() !== '') value = num
+
+    await request.put(`/api/v1/admin/configs/${key}` as any, { value })
+    showToast('保存成功', 'success')
+    editingKey.value = ''
+
+    // 刷新该配置项的值
+    const idx = configItems.value.findIndex(c => c.key === key)
+    if (idx >= 0) {
+      configItems.value[idx].value = value
+      configItems.value[idx]._parsed = value
+    }
+  } catch (e: any) {
+    showToast(e?.response?.data?.message || e?.message || '保存失败', 'error')
+  } finally {
+    saving.value = false
+  }
+}
 </script>
+
+<style scoped>
+.system-config-page {
+  max-width: 720px;
+}
+
+.page-header { margin-bottom: 28px; }
+.page-title {
+  font-size: 22px;
+  font-weight: 510;
+  color: var(--text-primary);
+}
+
+.loading-state, .empty-state {
+  text-align: center;
+  padding: 48px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* 表格 */
+.config-table-wrapper {
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.config-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.config-table th {
+  text-align: left;
+  padding: 12px 20px;
+  font-size: 12px;
+  font-weight: 510;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-base);
+}
+
+.config-table td {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-default);
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.config-table tr:last-child td { border-bottom: none; }
+
+.key-name {
+  font-weight: 510;
+}
+
+.key-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+.value-display {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.value-input {
+  padding: 6px 10px;
+  background: var(--bg-base);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  width: 120px;
+  font-family: inherit;
+}
+.value-input:focus { outline: none; }
+
+.action-cell {
+  text-align: right;
+}
+
+.btn-edit {
+  padding: 5px 14px;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-edit:hover { color: var(--text-primary); border-color: var(--border-hover); }
+
+.btn-save-inline {
+  padding: 5px 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  margin-right: 6px;
+}
+.btn-save-inline:hover { background: var(--accent-hover); }
+.btn-save-inline:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-cancel-inline {
+  padding: 5px 14px;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 9999;
+  animation: slideIn 0.3s ease;
+}
+
+.toast.success { background: #065f46; color: #6ee7b7; border: 1px solid #059669; }
+.toast.error { background: #7f1d1d; color: #fca5a5; border: 1px solid #dc2626; }
+
+@keyframes slideIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+</style>
