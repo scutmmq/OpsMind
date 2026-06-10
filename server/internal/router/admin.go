@@ -122,10 +122,12 @@ func registerAdminRoutes(rg *gin.RouterGroup, h *Handlers) {
 		rg.GET("/embedding-configs", h.Knowledge.ListEmbeddingConfigs)
 		rg.POST("/embedding-configs", h.Knowledge.CreateEmbeddingConfig)
 		rg.PUT("/embedding-configs/:id", h.Knowledge.UpdateEmbeddingConfig)
+		rg.DELETE("/embedding-configs/:id", h.Knowledge.DeleteEmbeddingConfig)
 	} else {
 		rg.GET("/embedding-configs", placeholder())
 		rg.POST("/embedding-configs", placeholder())
 		rg.PUT("/embedding-configs/:id", placeholder())
+		rg.DELETE("/embedding-configs/:id", placeholder())
 	}
 
 	// 系统配置（T34 — 已实现）

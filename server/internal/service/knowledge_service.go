@@ -581,6 +581,17 @@ func (s *KnowledgeService) ListEmbeddingConfigs() ([]response.EmbeddingConfigRes
 	return result, nil
 }
 
+// DeleteEmbeddingConfig 删除 Embedding 配置。
+func (s *KnowledgeService) DeleteEmbeddingConfig(id int64) error {
+	if err := s.repo.DeleteEmbeddingConfig(id); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return AppError{Code: errcode.ErrNotFound, Message: "Embedding 配置不存在"}
+		}
+		return err
+	}
+	return nil
+}
+
 // clearDefaultEmbedding 清空所有配置的 is_default 标志。
 //
 // 为什么批量更新而非逐条：确保 is_default=true 配置唯一，

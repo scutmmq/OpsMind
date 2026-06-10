@@ -30,7 +30,7 @@ func NewDashboardHandler(svc *service.DashboardService) *DashboardHandler {
 func (h *DashboardHandler) GetStats(c *gin.Context) {
 	resp, err := h.svc.GetStats()
 	if err != nil {
-		response.Error(c, errcode.ErrUnknown, "获取统计数据失败: "+err.Error())
+		handleServiceError(c, err)
 		return
 	}
 
@@ -49,7 +49,7 @@ func (h *DashboardHandler) GetTrends(c *gin.Context) {
 
 	resp, err := h.svc.GetTrends(req)
 	if err != nil {
-		response.Error(c, errcode.ErrUnknown, "获取趋势数据失败: "+err.Error())
+		handleServiceError(c, err)
 		return
 	}
 

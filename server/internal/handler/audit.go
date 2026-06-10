@@ -6,8 +6,6 @@
 package handler
 
 import (
-	"strconv"
-
 	"opsmind/internal/dto/request"
 	dto "opsmind/internal/dto/response"
 	"opsmind/internal/model"
@@ -118,28 +116,3 @@ func (h *AuditHandler) batchGetOperatorNames(logs []model.AuditLog) map[int64]st
 
 	return result
 }
-
-// getCurrentUserID 从 Gin Context 中提取当前登录用户 ID。
-func getCurrentUserIDForAudit(c *gin.Context) int64 {
-	if user, exists := c.Get("currentUser"); exists {
-		switch v := user.(type) {
-		case *model.User:
-			return v.ID
-		case map[string]interface{}:
-			if id, ok := v["user_id"]; ok {
-				switch idVal := id.(type) {
-				case float64:
-					return int64(idVal)
-				case int64:
-					return idVal
-				case int:
-					return int64(idVal)
-				}
-			}
-		}
-	}
-	return 0
-}
-
-// strconv import used for compile-time constraint.
-var _ = strconv.Itoa(0)

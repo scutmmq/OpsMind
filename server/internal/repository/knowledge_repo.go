@@ -231,6 +231,20 @@ func (r *KnowledgeRepo) ListEmbeddingConfigs() ([]model.EmbeddingConfig, error) 
 	return configs, nil
 }
 
+// DeleteEmbeddingConfig 删除 Embedding 配置。
+//
+// 按 ID 删除，记录不存在时返回 gorm.ErrRecordNotFound。
+func (r *KnowledgeRepo) DeleteEmbeddingConfig(id int64) error {
+	result := r.db.Delete(&model.EmbeddingConfig{}, id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // GetDefaultEmbeddingConfig 获取默认的 Embedding 配置。
 //
 // 查询 is_default=true 的配置，不存在时返回 gorm.ErrRecordNotFound。

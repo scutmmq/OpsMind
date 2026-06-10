@@ -352,6 +352,24 @@ func (h *KnowledgeHandler) ListEmbeddingConfigs(c *gin.Context) {
 	response.Success(c, gin.H{"items": configs})
 }
 
+// DeleteEmbeddingConfig 删除 Embedding 配置。
+//
+// DELETE /api/v1/admin/embedding-configs/:id
+func (h *KnowledgeHandler) DeleteEmbeddingConfig(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Error(c, errcode.ErrParam, "无效的配置 ID")
+		return
+	}
+
+	if err := h.svc.DeleteEmbeddingConfig(id); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	response.Success(c, nil)
+}
+
 // getCurrentUserID 从 Gin context 中获取当前用户 ID。
 //
 // 在实际环境中由 JWTAuth 中间件注入。
