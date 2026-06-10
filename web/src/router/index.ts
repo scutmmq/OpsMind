@@ -128,7 +128,7 @@ const router = createRouter({
           component: () => import('@/views/admin/EmbeddingConfig.vue')
         },
         {
-          path: 'system-config',
+          path: 'config',
           name: 'AdminSystemConfig',
           component: () => import('@/views/admin/SystemConfig.vue')
         }
