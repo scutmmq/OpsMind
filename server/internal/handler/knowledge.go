@@ -6,7 +6,9 @@
 package handler
 
 import (
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"opsmind/internal/dto/request"
 	"opsmind/internal/service"
@@ -18,12 +20,18 @@ import (
 
 // KnowledgeHandler 知识库管理接口。
 type KnowledgeHandler struct {
-	svc *service.KnowledgeService
+	svc   *service.KnowledgeService
+	svcV2 *service.KnowledgeServiceV2 // v2: 文档上传/发布管道
 }
 
 // NewKnowledgeHandler 创建 KnowledgeHandler 实例。
 func NewKnowledgeHandler(svc *service.KnowledgeService) *KnowledgeHandler {
 	return &KnowledgeHandler{svc: svc}
+}
+
+// SetV2Service 注入 v2 服务（用于文档上传等新功能）。
+func (h *KnowledgeHandler) SetV2Service(svcV2 *service.KnowledgeServiceV2) {
+	h.svcV2 = svcV2
 }
 
 // =============================================================================
@@ -402,6 +410,8 @@ func (h *KnowledgeHandler) DeleteEmbeddingConfig(c *gin.Context) {
 // UploadDocuments 上传文档到知识库（multipart form）。
 //
 // POST /api/v1/admin/knowledge-bases/:kb_id/documents/upload
+//
+// 流程：接收文件→校验类型/大小→解析文档→创建文章→入队异步处理。
 func (h *KnowledgeHandler) UploadDocuments(c *gin.Context) {
 	kbID, err := strconv.ParseInt(c.Param("kb_id"), 10, 64)
 	if err != nil {
@@ -416,20 +426,15 @@ func (h *KnowledgeHandler) UploadDocuments(c *gin.Context) {
 	}
 
 	// 校验文件类型
+	ext := strings.ToLower(filepath.Ext(file.Filename))
 	allowedTypes := map[string]bool{
 		".pdf": true, ".docx": true, ".md": true, ".txt": true,
-	}
-	ext := ""
-	for i := len(file.Filename) - 1; i >= 0; i-- {
-		if file.Filename[i] == '.' {
-			ext = file.Filename[i:]
-			break
-		}
 	}
 	if !allowedTypes[ext] {
 		response.Error(c, errcode.ErrParam, "不支持的文件格式: "+ext+"（支持: pdf/docx/md/txt）")
 		return
 	}
+	fileType := strings.TrimPrefix(ext, ".")
 
 	// 大小限制 50MB
 	const maxSize = 50 * 1024 * 1024
@@ -438,7 +443,7 @@ func (h *KnowledgeHandler) UploadDocuments(c *gin.Context) {
 		return
 	}
 
-	// 读取文件内容
+	// 打开文件
 	src, err := file.Open()
 	if err != nil {
 		response.Error(c, errcode.ErrUnknown, "读取文件失败: "+err.Error())
@@ -446,12 +451,25 @@ func (h *KnowledgeHandler) UploadDocuments(c *gin.Context) {
 	}
 	defer src.Close()
 
-	_ = kbID
-	// TODO M5+: 调用 KnowledgeServiceV2.UploadDocuments(kbID, userID, file)
+	userID := getCurrentUserID(c)
+
+	// 调用 v2 服务：解析→创建文章→入队处理
+	if h.svcV2 == nil {
+		response.Error(c, errcode.ErrUnknown, "v2 知识库服务未初始化")
+		return
+	}
+
+	article, err := h.svcV2.UploadDocuments(kbID, userID, file.Filename, fileType, src)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
 	response.Success(c, gin.H{
-		"message":  "文档已接收",
-		"filename": file.Filename,
-		"kb_id":    kbID,
+		"message":    "文档已接收，正在后台处理",
+		"article_id": article.ID,
+		"filename":   file.Filename,
+		"kb_id":      kbID,
 	})
 }
 
@@ -465,14 +483,24 @@ func (h *KnowledgeHandler) GetDocumentStatus(c *gin.Context) {
 		return
 	}
 
-	// TODO M5+: 调用 KnowledgeServiceV2.GetDocumentStatus(articleID)
+	if h.svcV2 == nil {
+		response.Error(c, errcode.ErrUnknown, "v2 知识库服务未初始化")
+		return
+	}
+
+	status, err := h.svcV2.GetDocumentStatus(articleID)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
 	response.Success(c, gin.H{
 		"article_id":     articleID,
-		"process_status": "completed", // 暂返回占位状态
+		"process_status": status,
 	})
 }
 
-// RetryDocument 重试文档处理。
+// RetryDocument 重试文档处理（重新入队）。
 //
 // POST /api/v1/admin/knowledge-bases/:kb_id/documents/:id/retry
 func (h *KnowledgeHandler) RetryDocument(c *gin.Context) {
@@ -482,7 +510,16 @@ func (h *KnowledgeHandler) RetryDocument(c *gin.Context) {
 		return
 	}
 
-	// TODO M5+: 调用 KnowledgeServiceV2.RetryDocument(articleID)
+	if h.svcV2 == nil {
+		response.Error(c, errcode.ErrUnknown, "v2 知识库服务未初始化")
+		return
+	}
+
+	if err := h.svcV2.RetryDocument(articleID); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
 	response.Success(c, gin.H{
 		"message":    "重试已提交",
 		"article_id": articleID,

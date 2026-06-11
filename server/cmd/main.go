@@ -104,24 +104,25 @@ func main() {
 		slog.Info("v2 RAG 引擎组件已就绪（pgvector 已连接）")
 	}
 
-	// v2: KnowledgeServiceV2（自建 pgvector 发布管道）
+	// v2: DocParser（多格式文档解析）
+	docParser := rag.NewDocParser()
+
+	// v2: KnowledgeServiceV2（自建 pgvector 发布管道 + 文档上传）
 	knowledgeServiceV2 := service.NewKnowledgeServiceV2(knowledgeRepo, nil, embedder, vectorStore, nil)
-	_ = knowledgeServiceV2 // M5 Handler 接入时使用
+	knowledgeServiceV2.SetDocParser(docParser)
 
 	// v2: ChatServiceV2（自建 Pipeline 检索）
 	chatServiceV2 := service.NewChatServiceV2(knowledgeRepo, chatRepo, nil, llmClient, llmConfigSvc.GetManager())
-	_ = chatServiceV2 // M5 Handler 接入时使用
 
-	// v1 兼容：占位（后续 M5/M7 清理）
+	// v1 兼容：占位（后续 M7 清理）
 	knowledgeService := &service.KnowledgeService{}
 	chatService := &service.ChatService{}
-	_ = knowledgeService
-	_ = chatService
 
 	messageService := service.NewMessageService(messageRepo)
 	dashboardService := service.NewDashboardService(db)
 	configService := service.NewConfigService(configRepo)
 
+	_ = chatServiceV2 // M6 前端接入时使用
 	_ = embedder
 	_ = bm25Retriever
 	_ = llmConfigSvc
@@ -133,6 +134,7 @@ func main() {
 	roleHandler := handler.NewRoleHandler(roleService)
 	ticketHandler := handler.NewTicketHandler(ticketService, knowledgeService)
 	knowledgeHandler := handler.NewKnowledgeHandler(knowledgeService)
+	knowledgeHandler.SetV2Service(knowledgeServiceV2) // v2: 文档上传/发布管道
 	chatHandler := handler.NewChatHandler(chatService)
 	messageHandler := handler.NewMessageHandler(messageService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)

@@ -33,6 +33,12 @@ func (m *mockKnowledgeRepoV2) FindArticleByID(id int64) (*model.KnowledgeArticle
 	return nil, fmt.Errorf("not found")
 }
 
+func (m *mockKnowledgeRepoV2) CreateArticle(article *model.KnowledgeArticle) error {
+	article.ID = int64(len(m.articles) + 100)
+	m.articles[article.ID] = article
+	return nil
+}
+
 func (m *mockKnowledgeRepoV2) UpdateArticle(article *model.KnowledgeArticle) error {
 	m.articles[article.ID] = article
 	return nil

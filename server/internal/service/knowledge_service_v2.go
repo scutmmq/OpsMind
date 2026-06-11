@@ -12,6 +12,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
+	"strings"
 
 	"opsmind/internal/adapter"
 	"opsmind/internal/model"
@@ -27,6 +29,7 @@ import (
 type knowledgeRepoV2 interface {
 	FindKBByID(id int64) (*model.KnowledgeBase, error)
 	FindArticleByID(id int64) (*model.KnowledgeArticle, error)
+	CreateArticle(article *model.KnowledgeArticle) error
 	UpdateArticle(article *model.KnowledgeArticle) error
 	UpdateArticleStatus(id int64, status int16) error
 }
@@ -45,6 +48,12 @@ type embedderV2 interface {
 type vectorStoreV2 interface {
 	BatchInsert(ctx context.Context, chunks []adapter.VectorChunk) error
 	DeleteByArticle(ctx context.Context, articleID int64) error
+	GetChunksByArticle(ctx context.Context, articleID int64) ([]adapter.ChunkContent, error)
+}
+
+// docParserV2 文档解析器接口。
+type docParserV2 interface {
+	Parse(reader io.Reader, fileType string) (string, error)
 }
 
 // =============================================================================
@@ -57,12 +66,13 @@ type KnowledgeServiceV2 struct {
 	chunker   chunkerV2
 	embedder  embedderV2
 	store     vectorStoreV2
+	docParser docParserV2
 	processor *rag.Processor
 }
 
 // NewKnowledgeServiceV2 创建 KnowledgeServiceV2 实例。
 //
-// chunker/embedder/store/processor 都可以为 nil（测试不需要全部依赖时）。
+// chunker/embedder/store/docParser/processor 都可以为 nil（测试不需要全部依赖时）。
 func NewKnowledgeServiceV2(repo interface{}, chunker interface{}, embedder interface{}, store interface{}, processor *rag.Processor) *KnowledgeServiceV2 {
 	svc := &KnowledgeServiceV2{
 		processor: processor,
@@ -80,8 +90,19 @@ func NewKnowledgeServiceV2(repo interface{}, chunker interface{}, embedder inter
 	if s, ok := store.(vectorStoreV2); ok {
 		svc.store = s
 	}
+	// DocParser 也实现 docParserV2
+	if dp, ok := repo.(docParserV2); ok {
+		svc.docParser = dp
+	} else if dp, ok := chunker.(docParserV2); ok {
+		svc.docParser = dp
+	}
 
 	return svc
+}
+
+// SetDocParser 注入文档解析器（从外部注入，如 rag.DocParser）。
+func (s *KnowledgeServiceV2) SetDocParser(dp docParserV2) {
+	s.docParser = dp
 }
 
 // =============================================================================
@@ -190,4 +211,124 @@ func (s *KnowledgeServiceV2) EnableV2(articleID int64) error {
 
 	article.Status = 1 // 已停用 → 草稿
 	return s.repo.UpdateArticle(article)
+}
+
+// =============================================================================
+// UploadDocuments — 文档上传 + 异步处理
+// =============================================================================
+
+// UploadDocuments 上传文档到知识库（解析→创建文章→入队异步处理）。
+//
+// 流程：
+//  1. DocParser 解析文件内容为纯文本
+//  2. 创建 KnowledgeArticle（source_type="upload", process_status="pending"）
+//  3. 提交到 Processor 异步处理（分块→embedding→pgvector 写入）
+//
+// fileType 不含点号，如 "pdf"、"docx"、"md"、"txt"。
+func (s *KnowledgeServiceV2) UploadDocuments(kbID int64, userID int64, filename string, fileType string, content io.Reader) (*model.KnowledgeArticle, error) {
+	// Step 1: 解析文档
+	if s.docParser == nil {
+		return nil, AppError{Code: errcode.ErrUnknown, Message: "文档解析器未初始化"}
+	}
+
+	text, err := s.docParser.Parse(content, fileType)
+	if err != nil {
+		return nil, AppError{Code: errcode.ErrParam, Message: "文档解析失败: " + err.Error()}
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, AppError{Code: errcode.ErrParam, Message: "文档内容为空"}
+	}
+
+	// Step 2: 创建文章（状态=草稿，来源=上传）
+	article := &model.KnowledgeArticle{
+		KBID:       kbID,
+		Question:   filename, // v1 model: Question 即标题
+		Answer:     text,     // v1 model: Answer 即正文
+		Category:   "文档上传",
+		Status:     1, // 草稿
+		CreatedBy:  userID,
+	}
+	if err := s.repo.CreateArticle(article); err != nil {
+		return nil, AppError{Code: errcode.ErrUnknown, Message: "创建文章失败: " + err.Error()}
+	}
+
+	// Step 3: 提交到异步处理器
+	if s.processor != nil {
+		task := rag.ProcessTask{
+			ArticleID: article.ID,
+			KBID:      kbID,
+			Content:   text,
+			OnStatusChange: func(aID int64, status, errMsg string) {
+				_ = s.repo.UpdateArticleStatus(aID, mapProcessStatus(status))
+			},
+		}
+		s.processor.Submit(task)
+	}
+
+	return article, nil
+}
+
+// GetDocumentStatus 查询文档处理状态。
+func (s *KnowledgeServiceV2) GetDocumentStatus(articleID int64) (string, error) {
+	article, err := s.repo.FindArticleByID(articleID)
+	if err != nil {
+		return "", AppError{Code: errcode.ErrNotFound, Message: "文章不存在"}
+	}
+	// 根据状态映射处理阶段
+	return mapArticleToProcessStatus(article), nil
+}
+
+// RetryDocument 重试文档处理（重新入队）。
+func (s *KnowledgeServiceV2) RetryDocument(articleID int64) error {
+	article, err := s.repo.FindArticleByID(articleID)
+	if err != nil {
+		return AppError{Code: errcode.ErrNotFound, Message: "文章不存在"}
+	}
+	if s.processor == nil {
+		return AppError{Code: errcode.ErrUnknown, Message: "文档处理器未初始化"}
+	}
+
+	// 重置状态并重新入队
+	_ = s.repo.UpdateArticleStatus(articleID, 1) // 重置为草稿
+	task := rag.ProcessTask{
+		ArticleID: articleID,
+		KBID:      article.KBID,
+		Content:   article.Answer,
+	}
+	s.processor.Submit(task)
+	return nil
+}
+
+// =============================================================================
+// 辅助
+// =============================================================================
+
+// mapProcessStatus 将 Processor 阶段映射为文章状态。
+func mapProcessStatus(status string) int16 {
+	switch status {
+	case "chunking", "embedding", "indexing":
+		return 1 // 草稿（处理中）
+	case "completed":
+		return 3 // 已通过（待发布）
+	case "failed":
+		return 1 // 草稿（失败，保留重新处理）
+	default:
+		return 1
+	}
+}
+
+// mapArticleToProcessStatus 将文章状态映射为处理阶段描述。
+func mapArticleToProcessStatus(article *model.KnowledgeArticle) string {
+	switch article.Status {
+	case 1:
+		return "pending"
+	case 3:
+		return "completed"
+	case 4:
+		return "published"
+	case 0:
+		return "disabled"
+	default:
+		return "unknown"
+	}
 }
