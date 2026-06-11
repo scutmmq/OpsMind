@@ -123,9 +123,13 @@ const router = createRouter({
           component: () => import('@/views/admin/ModelConfig.vue')
         },
         {
+          path: 'llm-config',
+          name: 'AdminLLMConfig',
+          component: () => import('@/views/admin/LLMConfig.vue')
+        },
+        {
           path: 'embedding-config',
-          name: 'AdminEmbeddingConfig',
-          component: () => import('@/views/admin/EmbeddingConfig.vue')
+          redirect: '/admin/llm-config'
         },
         {
           path: 'config',

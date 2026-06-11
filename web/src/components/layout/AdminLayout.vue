@@ -112,7 +112,7 @@ const activeMenu = computed(() => {
   if (path.startsWith('/admin/roles')) return '/admin/roles'
   if (path.startsWith('/admin/config')
     || path.startsWith('/admin/model-config')
-    || path.startsWith('/admin/embedding-config')
+    || path.startsWith('/admin/llm-config')
     || path.startsWith('/admin/audit-logs')) return '/admin/config'
   return '/admin/dashboard'
 })

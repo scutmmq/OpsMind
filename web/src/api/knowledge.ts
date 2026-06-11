@@ -39,15 +39,16 @@ export function updateKnowledgeBase(id: number, data: UpdateKBParams) {
 
 interface CreateArticleParams {
   kb_id: number
-  question: string
-  answer: string
+  title: string
+  content: string
+  source_type?: number  // 1=手动, 2=上传
   category?: string
   tags?: string[]
 }
 
 interface UpdateArticleParams {
-  question: string
-  answer: string
+  title: string
+  content: string
   category?: string
   tags?: string[]
 }
@@ -99,37 +100,29 @@ export function retrySyncArticle(id: number) {
 }
 
 // =============================================================================
-// Embedding 配置
+// v2 文档上传/处理（替代旧 RAG 同步）
 // =============================================================================
 
-interface CreateEmbeddingConfigParams {
-  name: string
-  model_type: number
-  api_endpoint?: string
-  api_key?: string
-  local_path?: string
-  vector_dimension: number
-  is_default?: boolean
+/** 上传文档到知识库（multipart form） */
+export function uploadDocuments(kbID: number, formData: FormData) {
+  return request.post(`/api/v1/admin/knowledge-bases/${kbID}/documents/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 
-interface UpdateEmbeddingConfigParams {
-  name: string
-  model_type: number
-  api_endpoint?: string
-  api_key?: string
-  local_path?: string
-  vector_dimension: number
-  is_default?: boolean
+/** 查询文档处理状态 */
+export function getDocumentStatus(kbID: number, articleID: number) {
+  return request.get(`/api/v1/admin/knowledge-bases/${kbID}/documents/${articleID}/status`)
 }
 
-export function listEmbeddingConfigs() {
-  return request.get('/api/v1/admin/embedding-configs')
+/** 重试文档处理 */
+export function retryDocument(kbID: number, articleID: number) {
+  return request.post(`/api/v1/admin/knowledge-bases/${kbID}/documents/${articleID}/retry`)
 }
 
-export function createEmbeddingConfig(data: CreateEmbeddingConfigParams) {
-  return request.post('/api/v1/admin/embedding-configs', data)
-}
-
-export function updateEmbeddingConfig(id: number, data: UpdateEmbeddingConfigParams) {
-  return request.put(`/api/v1/admin/embedding-configs/${id}`, data)
-}
+// ═══════════════════════════════════════════════════════════════════════════════
+// Embedding 配置 API 已迁移至 llm_config.ts（v2 Task 6.5 清理）
+//
+// 旧接口 (embedding-configs) 已被后端移除，前端使用新的 LLM 配置 API 替代。
+// 详见：web/src/api/llm_config.ts
+// ═══════════════════════════════════════════════════════════════════════════════

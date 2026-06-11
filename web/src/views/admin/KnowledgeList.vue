@@ -25,6 +25,11 @@
         <div class="articles-header">
           <h2>{{ selectedKB ? selectedKB.name + ' — 文章' : '请选择知识库' }}</h2>
           <div class="header-actions">
+            <select v-model="sourceTypeFilter" @change="fetchArticles" class="status-filter">
+              <option :value="-1">全部来源</option>
+              <option :value="1">手动创建</option>
+              <option :value="2">文档上传</option>
+            </select>
             <select v-model="statusFilter" @change="fetchArticles" class="status-filter">
               <option :value="-1">全部状态</option>
               <option :value="1">草稿</option>
@@ -42,14 +47,21 @@
 
         <table v-else-if="articles.length > 0" class="article-table">
           <thead>
-            <tr><th>问题</th><th>分类</th><th>状态</th><th>同步</th><th>更新时间</th><th>操作</th></tr>
+            <tr><th>标题</th><th>来源</th><th>分类</th><th>状态</th><th>字数</th><th>处理</th><th>更新时间</th><th>操作</th></tr>
           </thead>
           <tbody>
             <tr v-for="a in articles" :key="a.id">
-              <td class="question-cell" @click="goEdit(a.id)">{{ a.question }}</td>
+              <td class="title-cell" @click="goEdit(a.id)">{{ a.title || a.question || '-' }}</td>
+              <td><span class="source-icon">{{ sourceIcon(a.source_type) }}</span></td>
               <td>{{ a.category || '-' }}</td>
               <td><span :class="['status-tag', statusClass(a.status)]">{{ statusText(a.status) }}</span></td>
-              <td><span :class="['sync-badge', syncClass(a.sync_status)]">{{ syncText(a.sync_status) }}</span></td>
+              <td>{{ a.word_count || '-' }}</td>
+              <td>
+                <span v-if="a.source_type === 2" :class="['process-tag', processClass(a.process_status)]">
+                  {{ processText(a.process_status) }}
+                </span>
+                <span v-else class="process-tag">-</span>
+              </td>
               <td>{{ formatTime(a.updated_at) }}</td>
               <td class="action-cell">
                 <button v-if="a.status===1" class="btn-sm btn-primary" @click="handleSubmitReview(a.id)">提交审核</button>
@@ -57,7 +69,7 @@
                 <button v-if="a.status===3" class="btn-sm btn-success" @click="handlePublish(a.id)">发布</button>
                 <button v-if="a.status===4" class="btn-sm btn-warning" @click="handleDisable(a.id)">停用</button>
                 <button v-if="a.status===0" class="btn-sm btn-success" @click="handleEnable(a.id)">恢复</button>
-                <button v-if="a.sync_status==='failed'" class="btn-sm btn-warning" @click="handleRetrySync(a.id)">重试同步</button>
+                <button v-if="a.source_type===2 && a.process_status===5" class="btn-sm btn-warning" @click="handleRetryDocument(a.id)">重试</button>
                 <button v-if="a.status===1||a.status===5" class="btn-sm btn-default" @click="goEdit(a.id)">编辑</button>
               </td>
             </tr>
@@ -89,10 +101,11 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Pagination from '../../components/common/Pagination.vue'
-import { listKnowledgeBases, createKnowledgeBase, listArticles, submitReview, publishArticle, disableArticle, enableArticle, retrySyncArticle } from '../../api/knowledge'
+import { listKnowledgeBases, createKnowledgeBase, listArticles, submitReview, publishArticle, disableArticle, enableArticle, retryDocument } from '../../api/knowledge'
 
 interface KB { id: number; name: string }
-interface Article { id: number; question: string; category: string; status: number; sync_status: string; updated_at: string }
+// v2: 统一文章模型字段
+interface Article { id: number; title: string; question?: string; content: string; category: string; status: number; source_type: number; word_count: number; process_status: number; updated_at: string }
 
 const router = useRouter()
 const kbList = ref<KB[]>([])
@@ -101,7 +114,8 @@ const articles = ref<Article[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
-const statusFilter = ref(-1)  // 默认显示全部状态
+const statusFilter = ref(-1)
+const sourceTypeFilter = ref(-1)  // v2: 来源类型筛选
 const showKBDialog = ref(false)
 const newKB = ref({ name: '', description: '' })
 
@@ -116,6 +130,7 @@ const fetchArticles = async () => {
   try {
     const params: any = { page: currentPage.value, page_size: pageSize.value }
     if (statusFilter.value !== -1) params.status = statusFilter.value
+    if (sourceTypeFilter.value !== -1) params.source_type = sourceTypeFilter.value
     const res = await listArticles(selectedKB.value.id, params)
     const list = Array.isArray(res.data) ? res.data : (res.data.articles || [])
     articles.value = list; total.value = res.data.total || list.length || 0
@@ -130,12 +145,24 @@ const handleSubmitReview = async (id: number) => { try { await submitReview(id);
 const handlePublish = async (id: number) => { try { await publishArticle(id); await fetchArticles() } catch (e: any) { alert(e?.message) } }
 const handleDisable = async (id: number) => { if (!confirm('确定停用？')) return; try { await disableArticle(id); await fetchArticles() } catch (e: any) { alert(e?.message) } }
 const handleEnable = async (id: number) => { try { await enableArticle(id); await fetchArticles() } catch (e: any) { alert(e?.message) } }
-const handleRetrySync = async (id: number) => { try { await retrySyncArticle(id); await fetchArticles() } catch (e: any) { alert(e?.message) } }
+const handleRetryDocument = async (id: number) => {
+  if (!selectedKB.value) return
+  try { await retryDocument(selectedKB.value.id, id); await fetchArticles() } catch (e: any) { alert(e?.message) }
+}
+
+// v2 辅助函数
+const sourceIcon = (t: number) => { const m: Record<number,string> = { 1:'✍️',2:'📄' }; return m[t]||'❓' }
+const processClass = (s: number) => {
+  const m: Record<number,string> = { 1:'pending',2:'pending',3:'pending',4:'completed',5:'failed' }
+  return m[s]||''
+}
+const processText = (s: number) => {
+  const m: Record<number,string> = { 0:'待处理',1:'解析中',2:'分块中',3:'向量化中',4:'已完成',5:'失败' }
+  return m[s]||'-'
+}
 
 const statusClass = (s: number) => { const m: Record<number,string> = { '-1':'disabled',0:'disabled',1:'draft',2:'pending',3:'approved',4:'published',5:'rejected' }; return m[s]||'' }
 const statusText = (s: number) => { const m: Record<number,string> = { '-1':'已停用',0:'已停用',1:'草稿',2:'待审核',3:'已通过',4:'已发布',5:'已驳回' }; return m[s]||'未知' }
-const syncClass = (s: string) => { const m: Record<string,string> = { synced:'synced',pending:'pending',failed:'failed',disabled:'disabled' }; return m[s]||'' }
-const syncText = (s: string) => { const m: Record<string,string> = { synced:'已同步',pending:'待同步',failed:'失败',disabled:'已停用' }; return m[s]||s||'-' }
 const formatTime = (t: string) => t ? new Date(t).toLocaleString('zh-CN') : '-'
 </script>
 
@@ -159,8 +186,9 @@ const formatTime = (t: string) => t ? new Date(t).toLocaleString('zh-CN') : '-'
 .article-table { width: 100%; border-collapse: collapse; }
 .article-table th, .article-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border-default); font-size: 13px; color: var(--text-primary); }
 .article-table th { font-weight: 600; color: var(--text-secondary); font-size: 12px; }
-.question-cell { cursor: pointer; color: var(--accent); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.question-cell:hover { text-decoration: underline; }
+.title-cell { cursor: pointer; color: var(--accent); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.title-cell:hover { text-decoration: underline; }
+.source-icon { font-size: 14px; }
 .action-cell { display: flex; gap: 4px; flex-wrap: wrap; }
 .btn-sm { padding: 4px 10px; font-size: 12px; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap; }
 .btn-primary { background: var(--accent); color: #fff; }
@@ -175,11 +203,10 @@ const formatTime = (t: string) => t ? new Date(t).toLocaleString('zh-CN') : '-'
 .status-tag.published { background: var(--tag-published-bg); color: var(--tag-published-text); }
 .status-tag.rejected { background: var(--tag-rejected-bg); color: var(--tag-rejected-text); }
 .status-tag.disabled { background: var(--tag-disabled-bg); color: var(--tag-disabled-text); }
-.sync-badge { font-size: 12px; padding: 2px 6px; border-radius: 3px; }
-.sync-badge.synced { background: var(--sync-synced-bg); color: var(--sync-synced-text); }
-.sync-badge.pending { background: var(--sync-pending-bg); color: var(--sync-pending-text); }
-.sync-badge.failed { background: var(--sync-failed-bg); color: var(--sync-failed-text); }
-.sync-badge.disabled { background: var(--sync-disabled-bg); color: var(--sync-disabled-text); }
+.process-tag { font-size: 12px; padding: 2px 6px; border-radius: 3px; }
+.process-tag.pending { background: var(--tag-pending-bg); color: var(--tag-pending-text); }
+.process-tag.completed { background: var(--tag-published-bg); color: var(--tag-published-text); }
+.process-tag.failed { background: var(--tag-rejected-bg); color: var(--tag-rejected-text); }
 .dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .dialog { background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 8px; padding: 24px; width: 400px; }
 .dialog h3 { margin-bottom: 16px; font-size: 16px; color: var(--text-primary); }

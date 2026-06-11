@@ -9,8 +9,17 @@
       <p>加载配置中...</p>
     </div>
 
+    <!-- v2: LLM 配置入口 -->
+    <div class="llm-config-link">
+      <router-link to="/admin/llm-config" class="link-card">
+        <div class="link-title">LLM 配置</div>
+        <div class="link-desc">管理 LLM 和 Embedding 提供商（llama.cpp / OpenAI-compatible）</div>
+        <span class="link-arrow">→</span>
+      </router-link>
+    </div>
+
     <!-- 配置表单 -->
-    <div v-else class="config-form">
+    <div v-if="!loading" class="config-form">
       <!-- Top K -->
       <div class="config-item">
         <div class="config-header">
@@ -133,6 +142,41 @@ async function handleSave() {
   font-size: 22px;
   font-weight: 510;
   color: var(--text-primary);
+}
+
+/* v2: LLM 配置入口链接 */
+.llm-config-link { margin-bottom: 24px; }
+
+.link-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  text-decoration: none;
+  transition: border-color 0.2s;
+}
+
+.link-card:hover { border-color: var(--accent); }
+
+.link-title {
+  font-size: 15px;
+  font-weight: 510;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.link-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.link-arrow {
+  font-size: 16px;
+  color: var(--text-secondary);
 }
 
 .loading-state {

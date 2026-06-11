@@ -10,9 +10,26 @@ import { getToken } from '../utils/auth'
 // 类型定义
 // =============================================================================
 
+/** v2 RAG 管道步骤事件 */
+export interface StepEvent {
+  step_id: string
+  label: string
+  duration_ms?: number
+}
+
+/** v2 RAG 高级选项 */
+export interface RAGOptionsParams {
+  top_k?: number
+  query_rewrite?: boolean
+  multi_route?: boolean
+  hybrid?: boolean
+  rerank?: boolean
+}
+
 export interface CreateChatParams {
   question: string
   kb_id: number
+  rag_options?: RAGOptionsParams  // v2: RAG 高级选项
 }
 
 export interface SourceItem {
@@ -37,6 +54,8 @@ export interface ChatSessionResponse {
 export interface StreamCallbacks {
   /** 收到文本片段时调用 */
   onToken: (content: string) => void
+  /** v2: 收到 RAG 管道步骤事件 */
+  onStep?: (step: StepEvent) => void
   /** 流式传输完成，返回完整会话数据 */
   onDone: (session: ChatSessionResponse) => void
   /** 发生错误 */
@@ -112,6 +131,9 @@ export async function streamChatSession(
           const event = JSON.parse(jsonStr)
           if (event.type === 'token') {
             callbacks.onToken(event.content)
+          } else if (event.type === 'step') {
+            // v2: RAG 管道步骤事件
+            callbacks.onStep?.({ step_id: event.step_id, label: event.label, duration_ms: event.duration_ms })
           } else if (event.type === 'done') {
             callbacks.onDone(event.metadata as ChatSessionResponse)
           }

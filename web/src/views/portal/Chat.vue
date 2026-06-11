@@ -9,6 +9,50 @@
             {{ kb.name }}
           </option>
         </select>
+
+        <!-- v2: RAG 高级设置 -->
+        <button class="btn-advanced" :class="{ active: showAdvanced }" @click="showAdvanced = !showAdvanced">
+          ⚙ 高级
+        </button>
+      </div>
+
+      <!-- v2: RAG 高级设置面板 -->
+      <div v-if="showAdvanced" class="advanced-panel">
+        <div class="advanced-row">
+          <label class="advanced-label">Top K</label>
+          <input v-model.number="chatStore.ragOptions.top_k" type="number" min="1" max="20" class="advanced-input" />
+        </div>
+        <div class="advanced-toggles">
+          <label class="advanced-toggle">
+            <input type="checkbox" v-model="chatStore.ragOptions.query_rewrite" />
+            <span>查询改写</span>
+          </label>
+          <label class="advanced-toggle">
+            <input type="checkbox" v-model="chatStore.ragOptions.multi_route" />
+            <span>多路检索</span>
+          </label>
+          <label class="advanced-toggle">
+            <input type="checkbox" v-model="chatStore.ragOptions.hybrid" />
+            <span>混合检索</span>
+          </label>
+          <label class="advanced-toggle">
+            <input type="checkbox" v-model="chatStore.ragOptions.rerank" />
+            <span>重排序</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- v2: RAG 管道步骤指示器 -->
+      <div v-if="chatStore.currentStep || chatStore.pipelineMetrics" class="pipeline-steps">
+        <div v-if="chatStore.currentStep" class="step-current">
+          <span class="step-dot"></span>
+          {{ chatStore.currentStep }}
+        </div>
+        <div v-if="chatStore.pipelineMetrics" class="step-metrics">
+          <span v-for="s in chatStore.pipelineMetrics.steps" :key="s.step_id" :class="['step-badge', s.success ? 'done' : 'failed']">
+            {{ s.label }} {{ s.duration_ms }}ms
+          </span>
+        </div>
       </div>
 
       <!-- 消息列表 -->
@@ -103,6 +147,7 @@ const question = ref('')
 const selectedKB = ref<number | null>(null)
 const knowledgeBases = ref<Array<{ id: number; name: string }>>([])
 const messagesContainer = ref<HTMLElement | null>(null)
+const showAdvanced = ref(false)
 
 onMounted(async () => {
   try {
@@ -176,6 +221,124 @@ function scrollToBottom() {
   color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
+  flex: 1;
+}
+
+/* v2: 高级设置按钮 */
+.btn-advanced {
+  padding: 6px 12px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+.btn-advanced:hover { border-color: var(--accent); color: var(--text-primary); }
+.btn-advanced.active { border-color: var(--accent); color: var(--accent); }
+
+/* v2: 高级设置面板 */
+.advanced-panel {
+  padding: 12px 14px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.advanced-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.advanced-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.advanced-input {
+  width: 64px;
+  padding: 4px 8px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  text-align: center;
+}
+
+.advanced-toggles {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* v2: 管道步骤指示器 */
+.pipeline-steps {
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+}
+
+.step-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.step-metrics {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.step-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.step-badge.done {
+  background: rgba(46, 160, 67, 0.12);
+  color: #3fb950;
+}
+
+.step-badge.failed {
+  background: rgba(248, 81, 73, 0.12);
+  color: var(--tag-rejected-text);
 }
 
 /* 消息区域 */

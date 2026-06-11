@@ -1,7 +1,7 @@
 <template>
-  <div class="embedding-config-page">
+  <div class="llm-config-page">
     <div class="page-header">
-      <h1 class="page-title">Embedding 配置</h1>
+      <h1 class="page-title">LLM 配置</h1>
       <button class="btn-add" @click="startCreate">新增配置</button>
     </div>
 
@@ -12,8 +12,8 @@
 
     <!-- 空状态 -->
     <div v-else-if="configs.length === 0" class="empty-state">
-      <p>暂无 Embedding 配置</p>
-      <p class="empty-hint">点击"新增配置"创建第一个 Embedding 模型配置</p>
+      <p>暂无 LLM 配置</p>
+      <p class="empty-hint">点击"新增配置"添加 LLM 提供商（llama.cpp 或 OpenAI-compatible）</p>
     </div>
 
     <!-- 配置列表 -->
@@ -22,16 +22,24 @@
         <div class="card-body">
           <div class="card-info">
             <div class="card-name">
-              {{ cfg.name || cfg.model_name }}
+              {{ cfg.name }}
               <span v-if="cfg.is_default" class="badge-default">默认</span>
             </div>
             <div class="card-meta">
-              <span>{{ cfg.model_type === 1 ? 'API 类型' : '本地模型' }}</span>
+              <span :class="['provider-tag', providerClass(cfg.provider_type)]">
+                {{ providerText(cfg.provider_type) }}
+              </span>
+              <span class="meta-sep">·</span>
+              <span>{{ cfg.llm_model }}</span>
+              <span class="meta-sep">·</span>
+              <span>Embedding: {{ cfg.embedding_model }}</span>
               <span class="meta-sep">·</span>
               <span>维度 {{ cfg.vector_dimension }}</span>
             </div>
+            <div v-if="cfg.base_url" class="card-url">{{ cfg.base_url }}</div>
           </div>
           <div class="card-actions">
+            <button class="btn-action" @click="handleTestConnection(cfg)">测试连接</button>
             <button class="btn-action" @click="startEdit(cfg)">编辑</button>
             <button class="btn-action btn-action--danger" @click="confirmDelete(cfg)">删除</button>
           </div>
@@ -45,40 +53,53 @@
         <h2 class="modal-title">{{ editingId ? '编辑配置' : '新增配置' }}</h2>
 
         <div class="form-group">
-          <label class="form-label">模型名称</label>
-          <input
-            v-model="form.modelName"
-            class="form-input"
-            placeholder="如 text-embedding-ada-002"
-          />
+          <label class="form-label">名称</label>
+          <input v-model="form.name" class="form-input" placeholder="如 llama.cpp 本地、OpenAI" />
         </div>
 
         <div class="form-group">
-          <label class="form-label">模型类型</label>
-          <select v-model.number="form.modelType" class="form-select">
-            <option :value="1">API 类型</option>
-            <option :value="2">本地模型</option>
+          <label class="form-label">提供商类型</label>
+          <select v-model.number="form.provider_type" class="form-select">
+            <option :value="1">llama.cpp</option>
+            <option :value="2">OpenAI-compatible</option>
           </select>
         </div>
 
-        <div class="form-group" v-if="form.modelType === 1">
-          <label class="form-label">API 地址</label>
-          <input v-model="form.apiEndpoint" class="form-input" placeholder="https://api.example.com/v1/embeddings" />
-        </div>
-
-        <div class="form-group" v-if="form.modelType === 2">
-          <label class="form-label">本地模型路径</label>
-          <input v-model="form.localPath" class="form-input" placeholder="/models/bge-large-zh" />
+        <div class="form-group">
+          <label class="form-label">Base URL</label>
+          <input v-model="form.base_url" class="form-input" placeholder="http://llama-cpp:8080/v1" />
         </div>
 
         <div class="form-group">
-          <label class="form-label">向量维度</label>
-          <input v-model.number="form.vectorDimension" type="number" class="form-input" placeholder="1536" />
+          <label class="form-label">API Key{{ form.provider_type === 1 ? '（llama.cpp 可留空）' : '' }}</label>
+          <input v-model="form.api_key" class="form-input" placeholder="sk-..." />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">LLM 模型</label>
+            <input v-model="form.llm_model" class="form-input" placeholder="qwen3-4b" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Embedding 模型</label>
+            <input v-model="form.embedding_model" class="form-input" placeholder="bge-m3" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Max Tokens</label>
+            <input v-model.number="form.max_tokens" type="number" class="form-input" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">向量维度</label>
+            <input v-model.number="form.vector_dimension" type="number" class="form-input" />
+          </div>
         </div>
 
         <div class="form-group">
           <label class="form-checkbox">
-            <input type="checkbox" v-model="form.isDefault" />
+            <input type="checkbox" v-model="form.is_default" />
             <span>设为默认配置</span>
           </label>
         </div>
@@ -96,12 +117,34 @@
     <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
       <div class="modal modal--confirm">
         <h2 class="modal-title">确认删除</h2>
-        <p class="confirm-text">确定要删除 Embedding 配置「{{ deleteTarget?.name || deleteTarget?.model_name }}」吗？此操作不可撤销。</p>
+        <p class="confirm-text">确定要删除 LLM 配置「{{ deleteTarget?.name }}」吗？此操作不可撤销。</p>
         <div class="modal-actions">
           <button class="btn-cancel" @click="showDeleteConfirm = false">取消</button>
           <button class="btn-submit btn-submit--danger" :disabled="deleting" @click="handleDelete">
             {{ deleting ? '删除中...' : '确认删除' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 测试连接结果 -->
+    <div v-if="showTestResult" class="modal-overlay" @click.self="showTestResult = false">
+      <div class="modal modal--confirm">
+        <h2 class="modal-title">连接测试</h2>
+        <div v-if="testing" class="test-status">
+          <p>正在测试连接...</p>
+        </div>
+        <div v-else-if="testResult" class="test-result">
+          <div :class="['test-icon', testResult.success ? 'success' : 'failed']">
+            {{ testResult.success ? '✓' : '✗' }}
+          </div>
+          <p class="test-message">
+            {{ testResult.success ? `连接成功 — 模型: ${testResult.model}` : '连接失败' }}
+          </p>
+          <p v-if="testResult.success" class="test-latency">延迟: {{ testResult.latency }}ms</p>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-cancel" @click="showTestResult = false">关闭</button>
         </div>
       </div>
     </div>
@@ -114,38 +157,36 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import request from '@/utils/request'
-
-interface EmbeddingConfigItem {
-  id: number
-  name?: string
-  model_name?: string
-  model_type: number
-  api_endpoint?: string
-  local_path?: string
-  vector_dimension: number
-  is_default: boolean
-}
+import { ref, reactive, onMounted } from 'vue'
+import {
+  getLLMConfigs, createLLMConfig, updateLLMConfig, deleteLLMConfig, testLLMConnection,
+  type LLMConfigItem,
+} from '@/api/llm_config'
 
 const loading = ref(true)
-const configs = ref<EmbeddingConfigItem[]>([])
+const configs = ref<LLMConfigItem[]>([])
 const showModal = ref(false)
 const showDeleteConfirm = ref(false)
+const showTestResult = ref(false)
 const submitting = ref(false)
 const deleting = ref(false)
+const testing = ref(false)
 const editingId = ref<number | null>(null)
-const deleteTarget = ref<EmbeddingConfigItem | null>(null)
+const deleteTarget = ref<LLMConfigItem | null>(null)
+const testResult = ref<{ success: boolean; model?: string; latency?: number } | null>(null)
 const toast = ref<{ message: string; type: string }>({ message: '', type: 'success' })
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
-const form = ref({
-  modelName: '',
-  modelType: 1,
-  apiEndpoint: '',
-  localPath: '',
-  vectorDimension: 1536,
-  isDefault: false
+const form = reactive({
+  name: '',
+  provider_type: 1,
+  base_url: '',
+  api_key: '',
+  llm_model: '',
+  embedding_model: '',
+  max_tokens: 8192,
+  vector_dimension: 1024,
+  is_default: false,
 })
 
 onMounted(() => { fetchConfigs() })
@@ -159,7 +200,7 @@ function showToast(message: string, type: 'success' | 'error') {
 async function fetchConfigs() {
   loading.value = true
   try {
-    const res = await request.get('/api/v1/admin/embedding-configs' as any)
+    const res = await getLLMConfigs()
     const data = (res as any).data || res
     configs.value = Array.isArray(data) ? data : (data?.items || [])
   } catch {
@@ -170,7 +211,15 @@ async function fetchConfigs() {
 }
 
 function resetForm() {
-  form.value = { modelName: '', modelType: 1, apiEndpoint: '', localPath: '', vectorDimension: 1536, isDefault: false }
+  form.name = ''
+  form.provider_type = 1
+  form.base_url = ''
+  form.api_key = ''
+  form.llm_model = ''
+  form.embedding_model = ''
+  form.max_tokens = 8192
+  form.vector_dimension = 1024
+  form.is_default = false
 }
 
 function startCreate() {
@@ -179,16 +228,17 @@ function startCreate() {
   showModal.value = true
 }
 
-function startEdit(cfg: EmbeddingConfigItem) {
+function startEdit(cfg: LLMConfigItem) {
   editingId.value = cfg.id
-  form.value = {
-    modelName: cfg.name || cfg.model_name || '',
-    modelType: cfg.model_type,
-    apiEndpoint: cfg.api_endpoint || '',
-    localPath: cfg.local_path || '',
-    vectorDimension: cfg.vector_dimension,
-    isDefault: cfg.is_default
-  }
+  form.name = cfg.name
+  form.provider_type = cfg.provider_type
+  form.base_url = cfg.base_url
+  form.api_key = ''  // API Key 不回显（后端返回脱敏值）
+  form.llm_model = cfg.llm_model
+  form.embedding_model = cfg.embedding_model
+  form.max_tokens = cfg.max_tokens
+  form.vector_dimension = cfg.vector_dimension
+  form.is_default = cfg.is_default
   showModal.value = true
 }
 
@@ -198,20 +248,28 @@ function closeModal() {
 }
 
 async function handleSubmit() {
+  if (!form.name) { showToast('名称不能为空', 'error'); return }
+  if (!form.base_url) { showToast('Base URL 不能为空', 'error'); return }
+  if (!form.llm_model) { showToast('LLM 模型不能为空', 'error'); return }
+  if (!form.embedding_model) { showToast('Embedding 模型不能为空', 'error'); return }
+
   submitting.value = true
   try {
     const body = {
-      model_name: form.value.modelName,
-      model_type: form.value.modelType,
-      api_endpoint: form.value.apiEndpoint,
-      local_path: form.value.localPath,
-      vector_dimension: form.value.vectorDimension,
-      is_default: form.value.isDefault
+      name: form.name,
+      provider_type: form.provider_type,
+      base_url: form.base_url,
+      api_key: form.api_key,
+      llm_model: form.llm_model,
+      embedding_model: form.embedding_model,
+      max_tokens: form.max_tokens,
+      vector_dimension: form.vector_dimension,
+      is_default: form.is_default,
     }
     if (editingId.value) {
-      await request.put(`/api/v1/admin/embedding-configs/${editingId.value}` as any, body)
+      await updateLLMConfig(editingId.value, body)
     } else {
-      await request.post('/api/v1/admin/embedding-configs' as any, body)
+      await createLLMConfig(body)
     }
     showToast(editingId.value ? '更新成功' : '创建成功', 'success')
     closeModal()
@@ -223,7 +281,22 @@ async function handleSubmit() {
   }
 }
 
-function confirmDelete(cfg: EmbeddingConfigItem) {
+async function handleTestConnection(cfg: LLMConfigItem) {
+  showTestResult.value = true
+  testing.value = true
+  testResult.value = null
+  try {
+    const res = await testLLMConnection(cfg.id)
+    const data = (res as any).data || res
+    testResult.value = { success: true, model: data.model || cfg.llm_model, latency: data.latency || 0 }
+  } catch (e: any) {
+    testResult.value = { success: false }
+  } finally {
+    testing.value = false
+  }
+}
+
+function confirmDelete(cfg: LLMConfigItem) {
   deleteTarget.value = cfg
   showDeleteConfirm.value = true
 }
@@ -232,7 +305,7 @@ async function handleDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await request.delete(`/api/v1/admin/embedding-configs/${deleteTarget.value.id}` as any)
+    await deleteLLMConfig(deleteTarget.value.id)
     showToast('删除成功', 'success')
     showDeleteConfirm.value = false
     fetchConfigs()
@@ -242,11 +315,19 @@ async function handleDelete() {
     deleting.value = false
   }
 }
+
+function providerClass(type: number) {
+  return type === 1 ? 'llamacpp' : 'openai'
+}
+
+function providerText(type: number) {
+  return type === 1 ? 'llama.cpp' : 'OpenAI'
+}
 </script>
 
 <style scoped>
-.embedding-config-page {
-  max-width: 800px;
+.llm-config-page {
+  max-width: 900px;
 }
 
 .page-header {
@@ -301,7 +382,7 @@ async function handleDelete() {
 .card-body {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .card-name {
@@ -326,14 +407,44 @@ async function handleDelete() {
   font-size: 12px;
   color: var(--text-secondary);
   margin-top: 4px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.card-url {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  margin-top: 4px;
+  font-family: monospace;
 }
 
 .meta-sep { margin: 0 6px; }
+
+.provider-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.provider-tag.llamacpp {
+  background: rgba(46, 160, 67, 0.15);
+  color: #3fb950;
+}
+
+.provider-tag.openai {
+  background: rgba(16, 163, 127, 0.15);
+  color: #10a37f;
+}
 
 .card-actions {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+  margin-left: 16px;
 }
 
 .btn-action {
@@ -361,8 +472,10 @@ async function handleDelete() {
 }
 
 .modal {
-  width: 460px;
+  width: 520px;
   max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
   padding: 28px;
   background: var(--bg-panel);
   border: 1px solid var(--border-default);
@@ -406,6 +519,15 @@ async function handleDelete() {
 }
 .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent); }
 
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
 .form-checkbox {
   display: flex;
   align-items: center;
@@ -448,6 +570,15 @@ async function handleDelete() {
 .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-submit--danger { background: var(--btn-danger-bg); }
 .btn-submit--danger:hover { background: var(--btn-danger-bg); }
+
+/* 测试结果 */
+.test-status { text-align: center; padding: 20px; color: var(--text-secondary); font-size: 14px; }
+.test-result { text-align: center; padding: 16px; }
+.test-icon { font-size: 36px; margin-bottom: 12px; }
+.test-icon.success { color: var(--btn-success-text); }
+.test-icon.failed { color: var(--btn-danger-text); }
+.test-message { font-size: 14px; color: var(--text-primary); margin-bottom: 6px; }
+.test-latency { font-size: 12px; color: var(--text-secondary); }
 
 /* Toast */
 .toast {

@@ -17,6 +17,21 @@ import {
   type ChatSessionResponse,
 } from '@/api/chat'
 
+/** RAG 管道执行指标 */
+export interface PipelineMetrics {
+  steps: Array<{ step_id: string; label: string; duration_ms: number; success: boolean }>
+  total_duration_ms: number
+}
+
+/** RAG 高级选项 */
+export interface RAGOptions {
+  top_k: number
+  query_rewrite: boolean
+  multi_route: boolean
+  hybrid: boolean
+  rerank: boolean
+}
+
 export const useChatStore = defineStore('chat', () => {
   // State
   const currentSession = ref<ChatSessionResponse | null>(null)
@@ -25,6 +40,19 @@ export const useChatStore = defineStore('chat', () => {
   const streaming = ref(false)  // 是否正在流式输出中
   const selectedKBID = ref<number | null>(null)
 
+  // v2: RAG 管道步骤（当前执行的步骤标签）
+  const currentStep = ref('')
+  // v2: 管道执行指标（done 事件时设置）
+  const pipelineMetrics = ref<PipelineMetrics | null>(null)
+  // v2: RAG 高级选项
+  const ragOptions = ref<RAGOptions>({
+    top_k: 5,
+    query_rewrite: true,
+    multi_route: true,
+    hybrid: true,
+    rerank: true,
+  })
+
   // Actions
 
   /** 发送问题（SSE 流式模式，默认） */
@@ -32,6 +60,8 @@ export const useChatStore = defineStore('chat', () => {
     loading.value = true
     streaming.value = true
     selectedKBID.value = kbID
+    currentStep.value = ''
+    pipelineMetrics.value = null
 
     // 添加用户消息
     messages.value.push({ role: 'user', content: question })
@@ -46,7 +76,11 @@ export const useChatStore = defineStore('chat', () => {
     })
 
     await streamChatSession(
-      { question, kb_id: kbID },
+      {
+        question,
+        kb_id: kbID,
+        rag_options: ragOptions.value,  // v2: 传递 RAG 高级选项
+      },
       {
         onToken(content: string) {
           // 逐步追加 token 到 AI 消息
@@ -54,6 +88,10 @@ export const useChatStore = defineStore('chat', () => {
           if (msg) {
             msg.content += content
           }
+        },
+        onStep(step) {
+          // v2: 更新当前管道步骤
+          currentStep.value = step.label
         },
         onDone(session: ChatSessionResponse) {
           // 流式完成，更新会话元数据
@@ -66,6 +104,10 @@ export const useChatStore = defineStore('chat', () => {
           }
           loading.value = false
           streaming.value = false
+          // v2: 管道指标由 metadata 携带（如果后端支持）
+          if ((session as any).pipeline_metrics) {
+            pipelineMetrics.value = (session as any).pipeline_metrics
+          }
         },
         onError(error: string) {
           // 流式失败时移除占位消息，显示错误
@@ -76,6 +118,7 @@ export const useChatStore = defineStore('chat', () => {
           })
           loading.value = false
           streaming.value = false
+          currentStep.value = ''
         },
       }
     )
@@ -90,9 +133,15 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function setCurrentStep(step: string) {
+    currentStep.value = step
+  }
+
   function clearSession() {
     currentSession.value = null
     messages.value = []
+    currentStep.value = ''
+    pipelineMetrics.value = null
   }
 
   return {
@@ -101,8 +150,12 @@ export const useChatStore = defineStore('chat', () => {
     loading,
     streaming,
     selectedKBID,
+    currentStep,
+    pipelineMetrics,
+    ragOptions,
     sendQuestion,
     submitFeedback,
+    setCurrentStep,
     clearSession,
   }
 })
