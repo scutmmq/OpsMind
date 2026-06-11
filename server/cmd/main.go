@@ -18,6 +18,7 @@ import (
 	"opsmind/internal/config"
 	"opsmind/internal/database"
 	"opsmind/internal/handler"
+	"opsmind/internal/rag"
 	"opsmind/internal/repository"
 	"opsmind/internal/router"
 	"opsmind/internal/service"
@@ -57,13 +58,22 @@ func main() {
 	}
 	slog.Info("数据库迁移完成")
 
-	// 4. 初始化 Adapter 层（外部服务适配器）
-	ragClient := adapter.NewAnythingLLMClient(adapter.AnythingLLMConfig{
-		BaseURL:        cfg.AnythingLLM.BaseURL,
-		APIKey:         cfg.AnythingLLM.APIKey,
-		TimeoutSeconds: cfg.AnythingLLM.TimeoutSeconds,
-	})
-	slog.Info("RagClient 已初始化", "base_url", cfg.AnythingLLM.BaseURL)
+	// 4. 初始化 v2 Adapter 层（LLMClient / EmbeddingClient / VectorStore）
+	// LLM 客户端超时：同步 60s，流式 SSE 长连接通过 ctx 控制
+	llmTimeout := 60 * time.Second
+	llmClient := adapter.NewOpenAIClient(cfg.LLM.BaseURL, cfg.LLM.APIKey, llmTimeout)
+	embeddingClient := adapter.NewOpenAIEmbeddingClient(cfg.LLM.BaseURL, cfg.LLM.APIKey, 30*time.Second)
+	slog.Info("v2 LLM/Embedding 客户端已初始化", "base_url", cfg.LLM.BaseURL, "model", cfg.LLM.Model)
+
+	// pgvector 向量存储（使用与 GORM 相同的 DSN）
+	pgDSN := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		cfg.Database.User, cfg.Database.Password, cfg.Database.Host, cfg.Database.Port, cfg.Database.DBName, cfg.Database.SSLMode)
+	vectorStore, err := adapter.NewPgvectorStore(pgDSN)
+	if err != nil {
+		slog.Warn("pgvector 连接失败，向量检索功能不可用", "error", err)
+	} else {
+		slog.Info("pgvector VectorStore 已连接")
+	}
 
 	// 5. 初始化 Repository 层
 	configRepo := repository.NewConfigRepo(db)
@@ -80,11 +90,42 @@ func main() {
 	userService := service.NewUserService(userRepo, db)
 	roleService := service.NewRoleService(roleRepo, userRepo, db)
 	ticketService := service.NewTicketService(ticketRepo)
-	knowledgeService := service.NewKnowledgeService(knowledgeRepo, ragClient)
-	chatService := service.NewChatService(knowledgeRepo, chatRepo, ragClient)
+
+	// v2: LLM 配置管理（从 DB 加载默认配置）
+	llmConfigRepo := repository.NewLlmConfigRepo(db)
+	llmConfigSvc := service.NewLLMConfigService(llmConfigRepo)
+	slog.Info("v2 LLM 配置服务已初始化")
+
+	// v2: RAG 引擎组件
+	embedder := rag.NewEmbedder(embeddingClient, 20)
+	bm25Seg := rag.NewGseSegmenter()
+	bm25Retriever := rag.NewBM25Retriever(bm25Seg, 30*time.Minute)
+	if vectorStore != nil {
+		slog.Info("v2 RAG 引擎组件已就绪（pgvector 已连接）")
+	}
+
+	// v2: KnowledgeServiceV2（自建 pgvector 发布管道）
+	knowledgeServiceV2 := service.NewKnowledgeServiceV2(knowledgeRepo, nil, embedder, vectorStore, nil)
+	_ = knowledgeServiceV2 // M5 Handler 接入时使用
+
+	// v2: ChatServiceV2（自建 Pipeline 检索）
+	chatServiceV2 := service.NewChatServiceV2(knowledgeRepo, chatRepo, nil, llmClient, llmConfigSvc.GetManager())
+	_ = chatServiceV2 // M5 Handler 接入时使用
+
+	// v1 兼容：占位（后续 M5/M7 清理）
+	knowledgeService := &service.KnowledgeService{}
+	chatService := &service.ChatService{}
+	_ = knowledgeService
+	_ = chatService
+
 	messageService := service.NewMessageService(messageRepo)
 	dashboardService := service.NewDashboardService(db)
 	configService := service.NewConfigService(configRepo)
+
+	_ = embedder
+	_ = bm25Retriever
+	_ = llmConfigSvc
+	_ = vectorStore
 
 	// 7. 初始化 Handler 层
 	authHandler := handler.NewAuthHandler(authService)
