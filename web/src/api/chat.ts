@@ -1,9 +1,10 @@
 /**
  * 智能问答 API 封装（门户端）
  *
- * 提供问答会话创建和反馈提交接口。
+ * 提供问答会话创建（普通 + SSE 流式）和反馈提交接口。
  */
 import request from '../utils/request'
+import { getToken } from '../utils/auth'
 
 // =============================================================================
 // 类型定义
@@ -32,13 +33,108 @@ export interface ChatSessionResponse {
   created_at: string
 }
 
+/** SSE 流式事件的回调签名 */
+export interface StreamCallbacks {
+  /** 收到文本片段时调用 */
+  onToken: (content: string) => void
+  /** 流式传输完成，返回完整会话数据 */
+  onDone: (session: ChatSessionResponse) => void
+  /** 发生错误 */
+  onError: (error: string) => void
+}
+
 // =============================================================================
 // API 方法
 // =============================================================================
 
-/** 创建问答会话 */
+/** 创建问答会话（非流式） */
 export function createChatSession(data: CreateChatParams) {
   return request.post<ChatSessionResponse>('/api/v1/portal/chat-sessions', data)
+}
+
+/**
+ * 创建问答会话（SSE 流式输出）
+ *
+ * 使用 fetch + ReadableStream 消费 SSE 事件流，
+ * 逐个 token 渲染答案，提升用户体验。
+ *
+ * 为什么使用 fetch 而非 EventSource：
+ * EventSource 仅支持 GET 请求，无法传递 JSON 请求体（question + kb_id），
+ * 因此使用 fetch 发起 POST 并手动解析 SSE 流。
+ */
+export async function streamChatSession(
+  data: CreateChatParams,
+  callbacks: StreamCallbacks
+): Promise<void> {
+  const token = getToken()
+
+  try {
+    const response = await fetch('/api/v1/portal/chat-sessions/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      const errBody = await response.json().catch(() => ({ message: '请求失败' }))
+      callbacks.onError(errBody.message || `HTTP ${response.status}`)
+      return
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      callbacks.onError('浏览器不支持流式读取')
+      return
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      // 解析 SSE 事件（格式：data: {...}\n\n）
+      const lines = buffer.split('\n\n')
+      // 最后一个片段可能不完整，保留到下次处理
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const jsonStr = line.slice(6) // 去掉 "data: " 前缀
+
+        try {
+          const event = JSON.parse(jsonStr)
+          if (event.type === 'token') {
+            callbacks.onToken(event.content)
+          } else if (event.type === 'done') {
+            callbacks.onDone(event.metadata as ChatSessionResponse)
+          }
+        } catch {
+          // 跳过解析失败的 SSE 行（不完整或非 JSON）
+        }
+      }
+    }
+
+    // 处理 buffer 中剩余的完整事件
+    if (buffer.startsWith('data: ')) {
+      try {
+        const event = JSON.parse(buffer.slice(6))
+        if (event.type === 'done') {
+          callbacks.onDone(event.metadata as ChatSessionResponse)
+        }
+      } catch {
+        // 忽略尾部不完整数据
+      }
+    }
+  } catch (err: any) {
+    callbacks.onError(err.message || '网络连接失败')
+  }
 }
 
 /** 提交反馈 */

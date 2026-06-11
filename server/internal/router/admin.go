@@ -28,7 +28,12 @@ func registerAdminRoutes(rg *gin.RouterGroup, h *Handlers) {
 		rg.PATCH("/tickets/:id/status", placeholder())
 		rg.POST("/tickets/:id/records", placeholder())
 	}
-	rg.POST("/tickets/:id/knowledge-candidate", placeholder())
+	// 知识库候选（从申告生成知识条目）
+	if h != nil && h.Ticket != nil {
+		rg.POST("/tickets/:id/knowledge-candidate", h.Ticket.CreateKnowledgeCandidate)
+	} else {
+		rg.POST("/tickets/:id/knowledge-candidate", placeholder())
+	}
 
 	// 知识库管理（T18 — 已实现）
 	if h != nil && h.Knowledge != nil {
@@ -97,9 +102,14 @@ func registerAdminRoutes(rg *gin.RouterGroup, h *Handlers) {
 		}
 	}
 
-	// 菜单（占位 — T15 菜单权限绑定）
-	rg.GET("/menus", placeholder())
-	rg.PUT("/roles/:id/menus", placeholder())
+	// 菜单（T15 菜单权限绑定）
+	if h != nil && h.Role != nil {
+		rg.GET("/menus", h.Role.ListMenus)
+		rg.PUT("/roles/:id/menus", h.Role.UpdateRoleMenus)
+	} else {
+		rg.GET("/menus", placeholder())
+		rg.PUT("/roles/:id/menus", placeholder())
+	}
 
 	// 数据看板（T32 — 已实现）
 	if h != nil && h.Dashboard != nil {

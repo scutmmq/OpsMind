@@ -24,9 +24,13 @@
           :class="['message', msg.role === 'user' ? 'message--user' : 'message--assistant']"
         >
           <div class="message-bubble">
-            <div class="message-content">{{ msg.content }}</div>
-            <!-- 来源 -->
-            <div v-if="msg.sources && msg.sources.length > 0" class="sources">
+            <div class="message-content">
+              {{ msg.content }}
+              <!-- 流式输出中的光标动画 -->
+              <span v-if="msg.isStreaming && chatStore.streaming" class="streaming-cursor">▊</span>
+            </div>
+            <!-- 来源（仅流式完成后展示） -->
+            <div v-if="msg.sources && msg.sources.length > 0 && !msg.isStreaming" class="sources">
               <div class="sources-title">参考来源：</div>
               <div v-for="(src, si) in msg.sources" :key="si" class="source-item">
                 <span class="source-name">{{ src.doc_name }}</span>
@@ -36,7 +40,8 @@
           </div>
         </div>
 
-        <div v-if="chatStore.loading" class="loading-indicator">
+        <!-- 首次等待 AI 响应时的加载指示器 -->
+        <div v-if="chatStore.loading && !chatStore.streaming" class="loading-indicator">
           <span class="loading-dot"></span>
           <span class="loading-dot"></span>
           <span class="loading-dot"></span>
@@ -376,4 +381,17 @@ function scrollToBottom() {
 .btn-feedback:hover { border-color: var(--accent); }
 
 .btn-feedback--no:hover { border-color: #f87171; color: #f87171; }
+
+/* 流式输出光标动画 */
+.streaming-cursor {
+  display: inline;
+  animation: blink 1s step-end infinite;
+  color: var(--accent);
+  font-weight: 200;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
 </style>

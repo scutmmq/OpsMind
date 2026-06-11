@@ -116,3 +116,45 @@ func (h *RoleHandler) Delete(c *gin.Context) {
 
 	response.Success(c, nil)
 }
+
+// =============================================================================
+// 菜单管理
+// =============================================================================
+
+// ListMenus 获取全部菜单列表。
+//
+// GET /api/v1/admin/menus
+func (h *RoleHandler) ListMenus(c *gin.Context) {
+	menus, err := h.svc.ListMenus()
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.Success(c, menus)
+}
+
+// UpdateRoleMenus 更新角色菜单权限绑定。
+//
+// PUT /api/v1/admin/roles/:id/menus
+func (h *RoleHandler) UpdateRoleMenus(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Error(c, errcode.ErrParam, "无效的角色 ID")
+		return
+	}
+
+	var body struct {
+		MenuIDs []int64 `json:"menu_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Error(c, errcode.ErrParam, "参数校验失败: "+err.Error())
+		return
+	}
+
+	if err := h.svc.UpdateRoleMenus(id, body.MenuIDs); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	response.Success(c, nil)
+}

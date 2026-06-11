@@ -78,7 +78,7 @@ func main() {
 	// 6. 初始化 Service 层
 	authService := service.NewAuthService(userRepo, db)
 	userService := service.NewUserService(userRepo, db)
-	roleService := service.NewRoleService(roleRepo, db)
+	roleService := service.NewRoleService(roleRepo, userRepo, db)
 	ticketService := service.NewTicketService(ticketRepo)
 	knowledgeService := service.NewKnowledgeService(knowledgeRepo, ragClient)
 	chatService := service.NewChatService(knowledgeRepo, chatRepo, ragClient)
@@ -90,7 +90,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	roleHandler := handler.NewRoleHandler(roleService)
-	ticketHandler := handler.NewTicketHandler(ticketService)
+	ticketHandler := handler.NewTicketHandler(ticketService, knowledgeService)
 	knowledgeHandler := handler.NewKnowledgeHandler(knowledgeService)
 	chatHandler := handler.NewChatHandler(chatService)
 	messageHandler := handler.NewMessageHandler(messageService)
@@ -117,12 +117,13 @@ func main() {
 	})
 
 	// 10. 创建 HTTP Server（支持优雅关闭）
+	// WriteTimeout 设为 0 以支持 SSE 长连接；应用层通过 context.WithTimeout 控制超时
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 0, // SSE 流式响应无固定超时
 		IdleTimeout:  60 * time.Second,
 	}
 

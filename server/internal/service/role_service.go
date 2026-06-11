@@ -17,13 +17,14 @@ import (
 
 // RoleService 角色管理服务。
 type RoleService struct {
-	repo *repository.RoleRepo
-	db   *gorm.DB
+	repo     *repository.RoleRepo
+	userRepo *repository.UserRepo
+	db       *gorm.DB
 }
 
 // NewRoleService 创建 RoleService 实例。
-func NewRoleService(repo *repository.RoleRepo, db *gorm.DB) *RoleService {
-	return &RoleService{repo: repo, db: db}
+func NewRoleService(repo *repository.RoleRepo, userRepo *repository.UserRepo, db *gorm.DB) *RoleService {
+	return &RoleService{repo: repo, userRepo: userRepo, db: db}
 }
 
 // Create 创建角色。
@@ -111,4 +112,40 @@ func (s *RoleService) Delete(id int64) error {
 	}
 
 	return s.repo.Delete(id)
+}
+
+// ListMenus 获取全部菜单列表（树形结构）。
+//
+// 菜单权限绑定是本模块的核心功能之一，Menu 存储在独立的 menus 表中，
+// 但菜单管理归入角色模块，因为菜单是权限的载体。
+func (s *RoleService) ListMenus() ([]model.Menu, error) {
+	return s.userRepo.ListMenus()
+}
+
+// GetRoleMenus 获取指定角色的菜单 ID 列表。
+func (s *RoleService) GetRoleMenus(roleID int64) ([]model.Menu, error) {
+	// 先确认角色存在
+	if _, err := s.repo.GetByID(roleID); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, AppError{Code: errcode.ErrNotFound, Message: "角色不存在"}
+		}
+		return nil, err
+	}
+	return s.userRepo.GetRoleMenus(roleID)
+}
+
+// UpdateRoleMenus 更新角色的菜单权限绑定。
+//
+// 采用全量替换策略：先清空角色的所有菜单关联，再插入新关联。
+// 为什么全量替换而非增量更新：前端提交的是完整菜单 ID 列表，
+// 全量替换避免了前端需要追踪增删的复杂性。
+func (s *RoleService) UpdateRoleMenus(roleID int64, menuIDs []int64) error {
+	// 先确认角色存在
+	if _, err := s.repo.GetByID(roleID); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return AppError{Code: errcode.ErrNotFound, Message: "角色不存在"}
+		}
+		return err
+	}
+	return s.userRepo.UpdateRoleMenus(roleID, menuIDs)
 }

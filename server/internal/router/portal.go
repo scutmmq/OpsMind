@@ -12,11 +12,14 @@ import "github.com/gin-gonic/gin"
 // 路由列表与 TECH.md §5.2 门户端对齐。
 func registerPortalRoutes(rg *gin.RouterGroup, h *Handlers) {
 	// 智能问答（T26 — 已实现）
+	// chat-sessions/stream 必须在 :id 路由之前注册，避免 "stream" 被当作 :id 参数捕获
 	if h != nil && h.Chat != nil {
+		rg.POST("/chat-sessions/stream", h.Chat.StreamChatSession)
 		rg.POST("/chat-sessions", h.Chat.CreateChatSession)
 		rg.GET("/chat-sessions/:id", h.Chat.GetChatDetail)
 		rg.POST("/chat-sessions/:id/feedback", h.Chat.SubmitFeedback)
 	} else {
+		rg.POST("/chat-sessions/stream", placeholder())
 		rg.POST("/chat-sessions", placeholder())
 		rg.GET("/chat-sessions/:id", placeholder())
 		rg.POST("/chat-sessions/:id/feedback", placeholder())

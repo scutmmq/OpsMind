@@ -16,6 +16,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -158,9 +159,8 @@ func (s *ChatService) CreateChatSession(req request.CreateChatRequest, userID in
 		{SessionID: session.ID, Role: "assistant", Content: answer, Sources: sourcesJSON, Confidence: confidence, CreatedAt: now},
 	}
 	if err := s.chatRepo.CreateBatch(messages); err != nil {
-		// 消息写入失败不影响会话查询，仅记录（MVP 阶段不阻塞主流程）
-		// 后续可引入异步重试
-		_ = err
+		// 消息写入失败不影响主流程响应，但记录日志方便排查
+		slog.Error("问答消息写入失败（不影响回答返回）", "session_id", session.ID, "error", err)
 	}
 
 	return &response.ChatSessionResponse{

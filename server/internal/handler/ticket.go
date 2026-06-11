@@ -6,6 +6,7 @@
 package handler
 
 import (
+	"fmt"
 	"strconv"
 
 	"opsmind/internal/dto/request"
@@ -18,12 +19,13 @@ import (
 
 // TicketHandler 申告管理接口。
 type TicketHandler struct {
-	svc *service.TicketService
+	svc        *service.TicketService
+	kbSvc      *service.KnowledgeService
 }
 
 // NewTicketHandler 创建 TicketHandler 实例。
-func NewTicketHandler(svc *service.TicketService) *TicketHandler {
-	return &TicketHandler{svc: svc}
+func NewTicketHandler(svc *service.TicketService, kbSvc *service.KnowledgeService) *TicketHandler {
+	return &TicketHandler{svc: svc, kbSvc: kbSvc}
 }
 
 // =============================================================================
@@ -191,6 +193,57 @@ func (h *TicketHandler) AddRecord(c *gin.Context) {
 	userID := getCurrentUserID(c)
 	if svcErr := h.svc.AddRecord(id, userID, req); svcErr != nil {
 		handleServiceError(c, svcErr)
+		return
+	}
+
+	response.Success(c, nil)
+}
+
+// =============================================================================
+// 知识库候选
+// =============================================================================
+
+// CreateKnowledgeCandidate 从申告内容生成知识库候选条目。
+//
+// POST /api/v1/admin/tickets/:id/knowledge-candidate
+//
+// 为什么放在 TicketHandler 而非 KnowledgeHandler：
+// 该操作的本质是将申告处理经验转化为知识，操作入口是申告详情页，
+// 放在 TicketHandler 更符合用户操作路径。
+func (h *TicketHandler) CreateKnowledgeCandidate(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Error(c, errcode.ErrParam, "无效的申告 ID")
+		return
+	}
+
+	var body struct {
+		KBID int64 `json:"kb_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Error(c, errcode.ErrParam, "参数校验失败: "+err.Error())
+		return
+	}
+
+	userID := getCurrentUserID(c)
+
+	// 获取申告详情
+	detail, svcErr := h.svc.GetDetail(id)
+	if svcErr != nil {
+		handleServiceError(c, svcErr)
+		return
+	}
+
+	// 以申告标题和描述创建知识文章草稿
+	answer := fmt.Sprintf("问题描述：%s\n\n解决方案：%s", detail.Title, detail.Description)
+	articleReq := request.CreateArticleRequest{
+		KBID:     body.KBID,
+		Question: "申告经验 - " + detail.Title,
+		Answer:   answer,
+	}
+
+	if err := h.kbSvc.CreateArticle(articleReq, userID); err != nil {
+		handleServiceError(c, err)
 		return
 	}
 
