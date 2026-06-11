@@ -107,11 +107,11 @@ db-drop:
 
 # ===== 模型下载 =====
 
-# 下载 vLLM 对话模型（Qwen2.5-7B-Instruct）和 Embedding 模型（BGE-M3）
+# 下载 vLLM 对话模型（Qwen3-4B-Instruct）和 Embedding 模型（BGE-M3）
 # 需要先安装：pip install modelscope
 model-download:
-	@echo "下载对话模型 Qwen2.5-7B-Instruct (~15 GB)..."
-	python -c "from modelscope import snapshot_download; snapshot_download('Qwen/Qwen2.5-7B-Instruct', local_dir='./models/qwen2.5-7b-instruct')"
+	@echo "下载对话模型 Qwen3-4B-Instruct (~8 GB)..."
+	python -c "from modelscope import snapshot_download; snapshot_download('Qwen/Qwen3-4B-Instruct-2507', local_dir='./models/qwen3-4b')"
 	@echo ""
 	@echo "下载 Embedding 模型 BGE-M3 (~2.2 GB)..."
 	python -c "from modelscope import snapshot_download; snapshot_download('BAAI/bge-m3', local_dir='./models/bge-m3')"

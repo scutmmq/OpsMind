@@ -101,7 +101,7 @@ services:
     container_name: opsmind-vllm
     restart: unless-stopped
     # 实际部署时按模型和 GPU 环境补充启动参数。
-    # 示例：
+    # 示例（Qwen3-4B + bge-m3，vLLM 0.8+ 支持多模型）：
     #   deploy:
     #     resources:
     #       reservations:
@@ -111,9 +111,15 @@ services:
     #             capabilities: [gpu]
     #   command:
     #     - "--model"
-    #     - "/models/qwen2.5-7b-instruct"
+    #     - "/models/qwen3-4b"
+    #     - "--model"
+    #     - "/models/bge-m3"
     #     - "--served-model-name"
-    #     - "qwen2.5-7b-instruct"
+    #     - "qwen3-4b,bge-m3"
+    #     - "--max-model-len"
+    #     - "8192"
+    # 如果 vLLM 版本较旧不支持多模型，可启动两个 vllm 实例分别服务 LLM 和 Embedding。
+    # 或将 EMBEDDING_BASE_URL 改为其他 embedding 服务（如 TEI、Infinity）。
     volumes:
       - ./models:/models
     networks:

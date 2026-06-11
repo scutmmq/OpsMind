@@ -176,7 +176,7 @@ services:
     image: vllm/vllm-openai:latest
     container_name: opsmind-vllm
     # 实际部署时按模型和 GPU 环境补充启动参数。
-    # command: ["--model", "/models/qwen2.5-7b-instruct", "--served-model-name", "qwen2.5-7b-instruct"]
+    # command: ["--model", "/models/qwen3-4b", "--model", "/models/bge-m3", "--served-model-name", "qwen3-4b,bge-m3"]
     volumes:
       - ./models:/models
     networks:
@@ -234,7 +234,7 @@ AnythingLLM 通过 `generic-openai` 提供商对接所有 OpenAI 兼容 API。�
 
 ```dotenv
 LLM_BASE_URL=http://vllm:8000/v1
-LLM_MODEL=qwen2.5-7b-instruct
+LLM_MODEL=qwen3-4b
 LLM_TOKEN_LIMIT=8192
 LLM_API_KEY=dummy-key
 # Embedding 也用 vLLM
@@ -301,7 +301,7 @@ LLM_API_KEY=sk-your-api-key
 
 | 模型 | 用途 | 大小 |
 |------|------|------|
-| Qwen2.5-7B-Instruct | 对话生成 | ~15 GB |
+| Qwen3-4B-Instruct | 对话生成 | ~8 GB |
 | BGE-M3 | 文本向量化 | ~2.2 GB |
 
 **ModelScope 下载（国内推荐）：**
@@ -309,7 +309,7 @@ LLM_API_KEY=sk-your-api-key
 ```powershell
 pip install modelscope
 cd D:\Projects\Personal\OpsMind
-modelscope download --model Qwen/Qwen2.5-7B-Instruct --local_dir ./models/qwen2.5-7b-instruct
+modelscope download --model Qwen/Qwen3-4B-Instruct-2507 --local_dir ./models/qwen3-4b
 modelscope download --model BAAI/bge-m3 --local_dir ./models/bge-m3
 ```
 
@@ -320,7 +320,7 @@ modelscope download --model BAAI/bge-m3 --local_dir ./models/bge-m3
 ```powershell
 pip install huggingface_hub
 set HF_ENDPOINT=https://hf-mirror.com
-huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir ./models/qwen2.5-7b-instruct
+huggingface-cli download Qwen/Qwen3-4B-Instruct-2507 --local-dir ./models/qwen3-4b
 huggingface-cli download BAAI/bge-m3 --local-dir ./models/bge-m3
 ```
 
