@@ -138,6 +138,7 @@ func main() {
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	auditHandler := handler.NewAuditHandler(auditRepo, db)
 	configHandler := handler.NewConfigHandler(configService)
+	llmConfigHandler := handler.NewLLMConfigHandler(llmConfigSvc)
 
 	// 8. 初始化后台调度器
 	scheduler := service.NewScheduler(ticketRepo)
@@ -155,6 +156,7 @@ func main() {
 		Dashboard: dashboardHandler,
 		Audit:     auditHandler,
 		Config:    configHandler,
+		LLMConfig: llmConfigHandler,
 	})
 
 	// 10. 创建 HTTP Server（支持优雅关闭）

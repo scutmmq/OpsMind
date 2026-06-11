@@ -395,6 +395,100 @@ func (h *KnowledgeHandler) DeleteEmbeddingConfig(c *gin.Context) {
 	response.Success(c, nil)
 }
 
+// =============================================================================
+// v2 文档上传/状态/重试
+// =============================================================================
+
+// UploadDocuments 上传文档到知识库（multipart form）。
+//
+// POST /api/v1/admin/knowledge-bases/:kb_id/documents/upload
+func (h *KnowledgeHandler) UploadDocuments(c *gin.Context) {
+	kbID, err := strconv.ParseInt(c.Param("kb_id"), 10, 64)
+	if err != nil {
+		response.Error(c, errcode.ErrParam, "无效的知识库 ID")
+		return
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		response.Error(c, errcode.ErrParam, "文件上传失败: "+err.Error())
+		return
+	}
+
+	// 校验文件类型
+	allowedTypes := map[string]bool{
+		".pdf": true, ".docx": true, ".md": true, ".txt": true,
+	}
+	ext := ""
+	for i := len(file.Filename) - 1; i >= 0; i-- {
+		if file.Filename[i] == '.' {
+			ext = file.Filename[i:]
+			break
+		}
+	}
+	if !allowedTypes[ext] {
+		response.Error(c, errcode.ErrParam, "不支持的文件格式: "+ext+"（支持: pdf/docx/md/txt）")
+		return
+	}
+
+	// 大小限制 50MB
+	const maxSize = 50 * 1024 * 1024
+	if file.Size > maxSize {
+		response.Error(c, errcode.ErrParam, "文件大小超过限制（最大 50MB）")
+		return
+	}
+
+	// 读取文件内容
+	src, err := file.Open()
+	if err != nil {
+		response.Error(c, errcode.ErrUnknown, "读取文件失败: "+err.Error())
+		return
+	}
+	defer src.Close()
+
+	_ = kbID
+	// TODO M5+: 调用 KnowledgeServiceV2.UploadDocuments(kbID, userID, file)
+	response.Success(c, gin.H{
+		"message":  "文档已接收",
+		"filename": file.Filename,
+		"kb_id":    kbID,
+	})
+}
+
+// GetDocumentStatus 查询文档处理状态。
+//
+// GET /api/v1/admin/knowledge-bases/:kb_id/documents/:id/status
+func (h *KnowledgeHandler) GetDocumentStatus(c *gin.Context) {
+	articleID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Error(c, errcode.ErrParam, "无效的文章 ID")
+		return
+	}
+
+	// TODO M5+: 调用 KnowledgeServiceV2.GetDocumentStatus(articleID)
+	response.Success(c, gin.H{
+		"article_id":     articleID,
+		"process_status": "completed", // 暂返回占位状态
+	})
+}
+
+// RetryDocument 重试文档处理。
+//
+// POST /api/v1/admin/knowledge-bases/:kb_id/documents/:id/retry
+func (h *KnowledgeHandler) RetryDocument(c *gin.Context) {
+	articleID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.Error(c, errcode.ErrParam, "无效的文章 ID")
+		return
+	}
+
+	// TODO M5+: 调用 KnowledgeServiceV2.RetryDocument(articleID)
+	response.Success(c, gin.H{
+		"message":    "重试已提交",
+		"article_id": articleID,
+	})
+}
+
 // getCurrentUserID 从 Gin context 中获取当前用户 ID。
 //
 // JWTAuth 中间件将当前用户 ID 以 int64 类型写入 context，key 为 "userID"。

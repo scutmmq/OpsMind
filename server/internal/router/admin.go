@@ -50,6 +50,10 @@ func registerAdminRoutes(rg *gin.RouterGroup, h *Handlers) {
 		rg.POST("/articles/:id/disable", h.Knowledge.Disable)
 		rg.POST("/articles/:id/enable", h.Knowledge.Enable)
 		rg.POST("/articles/:id/retry-sync", h.Knowledge.RetrySync)
+			// v2 文档上传
+			rg.POST("/knowledge-bases/:kb_id/documents/upload", h.Knowledge.UploadDocuments)
+			rg.GET("/knowledge-bases/:kb_id/documents/:id/status", h.Knowledge.GetDocumentStatus)
+			rg.POST("/knowledge-bases/:kb_id/documents/:id/retry", h.Knowledge.RetryDocument)
 	} else {
 		rg.GET("/knowledge-bases", placeholder())
 		rg.POST("/knowledge-bases", placeholder())
@@ -129,17 +133,21 @@ func registerAdminRoutes(rg *gin.RouterGroup, h *Handlers) {
 		rg.GET("/audit-logs", placeholder())
 	}
 
-	// Embedding 配置（T19 — 已实现）
-	if h != nil && h.Knowledge != nil {
-		rg.GET("/embedding-configs", h.Knowledge.ListEmbeddingConfigs)
-		rg.POST("/embedding-configs", h.Knowledge.CreateEmbeddingConfig)
-		rg.PUT("/embedding-configs/:id", h.Knowledge.UpdateEmbeddingConfig)
-		rg.DELETE("/embedding-configs/:id", h.Knowledge.DeleteEmbeddingConfig)
+	// LLM 配置（v2 新增 — 替代 v1 embedding-configs）
+	if h != nil && h.LLMConfig != nil {
+		rg.GET("/llm-configs", h.LLMConfig.ListConfigs)
+		rg.POST("/llm-configs", h.LLMConfig.CreateConfig)
+		rg.GET("/llm-configs/:id", h.LLMConfig.GetConfig)
+		rg.PUT("/llm-configs/:id", h.LLMConfig.UpdateConfig)
+		rg.DELETE("/llm-configs/:id", h.LLMConfig.DeleteConfig)
+		rg.POST("/llm-configs/:id/test", h.LLMConfig.TestConnection)
 	} else {
-		rg.GET("/embedding-configs", placeholder())
-		rg.POST("/embedding-configs", placeholder())
-		rg.PUT("/embedding-configs/:id", placeholder())
-		rg.DELETE("/embedding-configs/:id", placeholder())
+		rg.GET("/llm-configs", placeholder())
+		rg.POST("/llm-configs", placeholder())
+		rg.GET("/llm-configs/:id", placeholder())
+		rg.PUT("/llm-configs/:id", placeholder())
+		rg.DELETE("/llm-configs/:id", placeholder())
+		rg.POST("/llm-configs/:id/test", placeholder())
 	}
 
 	// 系统配置（T34 — 已实现）
