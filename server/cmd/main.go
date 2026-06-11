@@ -114,9 +114,9 @@ func main() {
 	// v2: ChatServiceV2（自建 Pipeline 检索）
 	chatServiceV2 := service.NewChatServiceV2(knowledgeRepo, chatRepo, nil, llmClient, llmConfigSvc.GetManager())
 
-	// v1 兼容：占位（后续 M7 清理）
-	knowledgeService := &service.KnowledgeService{}
-	chatService := &service.ChatService{}
+	// v1 兼容：占位（KnowledgeService/ChatService v1 RagClient 已移除，由 v2 服务替代）
+	knowledgeService := service.NewKnowledgeService(knowledgeRepo)
+	chatService := service.NewChatService(knowledgeRepo, chatRepo)
 
 	messageService := service.NewMessageService(messageRepo)
 	dashboardService := service.NewDashboardService(db)

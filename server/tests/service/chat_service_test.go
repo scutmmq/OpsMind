@@ -2,17 +2,16 @@
 
 // Package service_test 验证 ChatService 业务逻辑。
 //
-// 测试覆盖 PLAN.md Task26 定义的全部方法：
-// CreateChatSession / SubmitFeedback / GetChatDetail
-// 覆盖场景：正常问答、低置信度兜底、AI 服务错误降级、不可达降级、参数校验。
+// v2 迁移：adapter.RagClient 已移除，ChatService 不再依赖外部 RAG 服务。
+// CreateChatSession 在 v1 占位阶段返回 AI 不可用兜底回答（answer=fallbackAIUnavailable,
+// CanSubmitTicket=true），v2 行为由 ChatServiceV2 + SSE 流式端点提供。
+//
+// 保留测试：参数校验、会话持久化、反馈提交、详情查询。
 package service_test
 
 import (
-	"context"
-	"errors"
 	"testing"
 
-	"opsmind/internal/adapter"
 	"opsmind/internal/config"
 	"opsmind/internal/database"
 	"opsmind/internal/dto/request"
@@ -22,34 +21,6 @@ import (
 
 	"gorm.io/gorm"
 )
-
-// =============================================================================
-// Mock RagClient（chat 专用）
-// =============================================================================
-
-// mockChatRagClient 可定制 Query 行为的 RagClient mock。
-type mockChatRagClient struct {
-	queryFunc func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error)
-}
-
-func (m *mockChatRagClient) Query(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-	if m.queryFunc != nil {
-		return m.queryFunc(ctx, req)
-	}
-	return &adapter.RAGQueryResponse{Answer: "默认回答", Confidence: 0.9}, nil
-}
-
-func (m *mockChatRagClient) CreateWorkspace(ctx context.Context, req adapter.RAGCreateWorkspaceRequest) (*adapter.RAGCreateWorkspaceResponse, error) {
-	return &adapter.RAGCreateWorkspaceResponse{Slug: "mock-ws", ID: 1}, nil
-}
-
-func (m *mockChatRagClient) SyncDocument(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error) {
-	return &adapter.RAGSyncResponse{DocumentLocation: "mock-loc"}, nil
-}
-
-func (m *mockChatRagClient) DisableDocument(ctx context.Context, req adapter.RAGDisableRequest) error {
-	return nil
-}
 
 // =============================================================================
 // 测试基础设施
@@ -69,7 +40,7 @@ func init() {
 	chatSvcDB = db
 }
 
-func setupChatServiceTest(t *testing.T) (*service.ChatService, *mockChatRagClient, *model.KnowledgeBase) {
+func setupChatServiceTest(t *testing.T) (*service.ChatService, *model.KnowledgeBase) {
 	t.Helper()
 
 	// 创建表
@@ -105,10 +76,9 @@ func setupChatServiceTest(t *testing.T) (*service.ChatService, *mockChatRagClien
 
 	knowledgeRepo := repository.NewKnowledgeRepo(chatSvcDB)
 	chatRepo := repository.NewChatRepo(chatSvcDB)
-	mockRAG := &mockChatRagClient{}
-	svc := service.NewChatService(knowledgeRepo, chatRepo, mockRAG)
+	svc := service.NewChatService(knowledgeRepo, chatRepo)
 
-	// 创建测试知识库（含 workspace slug）
+	// 创建测试知识库
 	kb := &model.KnowledgeBase{
 		Name:             "运维知识库",
 		Description:      "测试",
@@ -121,32 +91,16 @@ func setupChatServiceTest(t *testing.T) (*service.ChatService, *mockChatRagClien
 		t.Fatalf("创建测试知识库失败: %v", err)
 	}
 
-	return svc, mockRAG, kb
+	return svc, kb
 }
 
 // =============================================================================
 // CreateChatSession
 // =============================================================================
 
+// TestChatService_CreateChatSession_Success 验证问答会话创建成功（v1 占位阶段返回兜底回答）。
 func TestChatService_CreateChatSession_Success(t *testing.T) {
-	svc, mockRAG, kb := setupChatServiceTest(t)
-
-	// 设置 mock 返回高置信度答案
-	mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		if req.WorkspaceSlug != "ops-workspace" {
-			t.Errorf("期望 workspace='ops-workspace', got '%s'", req.WorkspaceSlug)
-		}
-		if req.Question != "如何重置密码？" {
-			t.Errorf("期望 question='如何重置密码？', got '%s'", req.Question)
-		}
-		return &adapter.RAGQueryResponse{
-			Answer:     "请前往设置页面修改密码",
-			Confidence: 0.85,
-			Sources: []adapter.RAGSource{
-				{DocName: "账号管理", ChunkContent: "修改密码...", Confidence: 0.85},
-			},
-		}, nil
-	}
+	svc, kb := setupChatServiceTest(t)
 
 	req := request.CreateChatRequest{
 		Question: "如何重置密码？",
@@ -157,33 +111,23 @@ func TestChatService_CreateChatSession_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("期望无错误, got %v", err)
 	}
-	if resp.Answer != "请前往设置页面修改密码" {
-		t.Errorf("期望 Answer, got '%s'", resp.Answer)
+	if resp.Answer == "" {
+		t.Error("期望非空 Answer（v1 占位阶段应有兜底回答）")
 	}
-	if resp.Confidence != 0.85 {
-		t.Errorf("期望 Confidence=0.85, got %f", resp.Confidence)
+	if resp.Question != "如何重置密码？" {
+		t.Errorf("期望 Question 保持原值, got '%s'", resp.Question)
 	}
-	if len(resp.Sources) != 1 {
-		t.Errorf("期望 1 个来源, got %d", len(resp.Sources))
-	}
-	if resp.CanSubmitTicket {
-		t.Error("高置信度时 CanSubmitTicket 应为 false")
+	if !resp.CanSubmitTicket {
+		t.Error("CanSubmitTicket 应为 true（v1 占位阶段）")
 	}
 	if resp.SessionID == 0 {
 		t.Error("应填充 SessionID")
 	}
 }
 
+// TestChatService_CreateChatSession_LowConfidence v1 占位阶段始终返回低置信度（RagClient 已移除）。
 func TestChatService_CreateChatSession_LowConfidence(t *testing.T) {
-	svc, mockRAG, kb := setupChatServiceTest(t)
-
-	mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		return &adapter.RAGQueryResponse{
-			Answer:     "不太确定...",
-			Confidence: 0.3,
-			Sources:    []adapter.RAGSource{},
-		}, nil
-	}
+	svc, kb := setupChatServiceTest(t)
 
 	req := request.CreateChatRequest{Question: "复杂问题", KBID: kb.ID}
 	resp, err := svc.CreateChatSession(req, 1)
@@ -191,56 +135,13 @@ func TestChatService_CreateChatSession_LowConfidence(t *testing.T) {
 		t.Fatalf("期望无错误, got %v", err)
 	}
 	if !resp.CanSubmitTicket {
-		t.Error("低置信度时 CanSubmitTicket 应为 true")
-	}
-	if len(resp.Answer) == 0 {
-		t.Error("低置信度时也应返回兜底答案")
+		t.Error("CanSubmitTicket 应为 true（v1 占位阶段始终可提交申告）")
 	}
 }
 
-func TestChatService_CreateChatSession_RAGError(t *testing.T) {
-	svc, mockRAG, kb := setupChatServiceTest(t)
-
-	mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		return &adapter.RAGQueryResponse{
-			Error: "workspace not found",
-		}, nil
-	}
-
-	req := request.CreateChatRequest{Question: "问题", KBID: kb.ID}
-	resp, err := svc.CreateChatSession(req, 1)
-	if err != nil {
-		t.Fatalf("期望无错误（降级处理）, got %v", err)
-	}
-	if !resp.CanSubmitTicket {
-		t.Error("AI 服务返回错误时 CanSubmitTicket 应为 true")
-	}
-}
-
-func TestChatService_CreateChatSession_Unreachable(t *testing.T) {
-	svc, mockRAG, kb := setupChatServiceTest(t)
-
-	mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		return nil, errors.New("connection refused")
-	}
-
-	req := request.CreateChatRequest{Question: "问题", KBID: kb.ID}
-	_, err := svc.CreateChatSession(req, 1)
-	if err == nil {
-		t.Fatal("期望错误, got nil")
-	}
-	// 应返回 AppError 且 code=20001
-	appErr, ok := err.(service.AppError)
-	if !ok {
-		t.Fatalf("期望 AppError, got %T", err)
-	}
-	if appErr.Code != 20001 {
-		t.Errorf("期望 code=20001 (AI 服务不可用), got %d", appErr.Code)
-	}
-}
-
+// TestChatService_CreateChatSession_InvalidKB 不存在的知识库应返回错误。
 func TestChatService_CreateChatSession_InvalidKB(t *testing.T) {
-	svc, _, _ := setupChatServiceTest(t)
+	svc, _ := setupChatServiceTest(t)
 
 	req := request.CreateChatRequest{Question: "问题", KBID: 999999}
 	_, err := svc.CreateChatSession(req, 1)
@@ -249,8 +150,9 @@ func TestChatService_CreateChatSession_InvalidKB(t *testing.T) {
 	}
 }
 
+// TestChatService_CreateChatSession_EmptyQuestion 空问题应返回参数校验错误。
 func TestChatService_CreateChatSession_EmptyQuestion(t *testing.T) {
-	svc, _, kb := setupChatServiceTest(t)
+	svc, kb := setupChatServiceTest(t)
 
 	req := request.CreateChatRequest{Question: "", KBID: kb.ID}
 	_, err := svc.CreateChatSession(req, 1)
@@ -263,13 +165,11 @@ func TestChatService_CreateChatSession_EmptyQuestion(t *testing.T) {
 // SubmitFeedback
 // =============================================================================
 
+// TestChatService_SubmitFeedback 提交反馈后会话反馈值正确更新。
 func TestChatService_SubmitFeedback(t *testing.T) {
-	svc, mockRAG, kb := setupChatServiceTest(t)
+	svc, kb := setupChatServiceTest(t)
 
 	// 先创建会话
-	mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		return &adapter.RAGQueryResponse{Answer: "答案", Confidence: 0.9}, nil
-	}
 	resp, err := svc.CreateChatSession(request.CreateChatRequest{Question: "问题", KBID: kb.ID}, 1)
 	if err != nil {
 		t.Fatalf("创建会话失败: %v", err)
@@ -295,8 +195,9 @@ func TestChatService_SubmitFeedback(t *testing.T) {
 // GetChatDetail
 // =============================================================================
 
+// TestChatService_GetChatDetail_NotFound 不存在的会话应返回错误。
 func TestChatService_GetChatDetail_NotFound(t *testing.T) {
-	svc, _, _ := setupChatServiceTest(t)
+	svc, _ := setupChatServiceTest(t)
 
 	_, err := svc.GetChatDetail(999999)
 	if err == nil {

@@ -3,18 +3,16 @@
 // Package handler_test 验证 KnowledgeHandler HTTP 接口。
 //
 // 测试覆盖知识库 CRUD、文章 CRUD、审核流程的 HTTP 端点。
-// RagClient 使用 mock 实现，数据库使用 opsmind_test。
+// RagClient 依赖已移除（v2 自建 pgvector 管道），数据库使用 opsmind_test。
 package handler_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"testing"
 
-	"opsmind/internal/adapter"
 	"opsmind/internal/config"
 	"opsmind/internal/database"
 	"opsmind/internal/dto/request"
@@ -26,25 +24,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
-
-// =============================================================================
-// Mock RagClient (for Handler tests)
-// =============================================================================
-
-type handlerMockRagClient struct{}
-
-func (m *handlerMockRagClient) Query(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-	return &adapter.RAGQueryResponse{Answer: "mock", Confidence: 0.8}, nil
-}
-func (m *handlerMockRagClient) CreateWorkspace(ctx context.Context, req adapter.RAGCreateWorkspaceRequest) (*adapter.RAGCreateWorkspaceResponse, error) {
-	return &adapter.RAGCreateWorkspaceResponse{Slug: "ws-handler-slug"}, nil
-}
-func (m *handlerMockRagClient) SyncDocument(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error) {
-	return &adapter.RAGSyncResponse{DocumentLocation: "doc-loc-handler"}, nil
-}
-func (m *handlerMockRagClient) DisableDocument(ctx context.Context, req adapter.RAGDisableRequest) error {
-	return nil
-}
 
 // =============================================================================
 // 测试基础设施
@@ -71,8 +50,7 @@ func init() {
 func setupKnowledgeHandler(t *testing.T) *handler.KnowledgeHandler {
 	t.Helper()
 	repo := repository.NewKnowledgeRepo(knowledgeHandlerDB)
-	rag := &handlerMockRagClient{}
-	svc := service.NewKnowledgeService(repo, rag)
+	svc := service.NewKnowledgeService(repo)
 	return handler.NewKnowledgeHandler(svc)
 }
 

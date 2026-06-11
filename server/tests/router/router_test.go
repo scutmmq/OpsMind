@@ -188,9 +188,11 @@ func TestAdminRoutes_Exist(t *testing.T) {
 		// 系统配置
 		{"GET", "/api/v1/admin/configs/app_name"},
 		{"PUT", "/api/v1/admin/configs/app_name"},
-		{"GET", "/api/v1/admin/embedding-configs"},
-		{"POST", "/api/v1/admin/embedding-configs"},
-		{"PUT", "/api/v1/admin/embedding-configs/1"},
+		{"GET", "/api/v1/admin/llm-configs"},
+		{"POST", "/api/v1/admin/llm-configs"},
+		{"GET", "/api/v1/admin/llm-configs/1"},
+			{"PUT", "/api/v1/admin/llm-configs/1"},
+			{"DELETE", "/api/v1/admin/llm-configs/1"},
 	}
 
 	for _, tt := range tests {

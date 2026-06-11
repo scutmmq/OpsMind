@@ -3,25 +3,24 @@
 // Package integration_test 验证智能问答模块的端到端完整流程。
 //
 // 测试覆盖 PLAN.md Task36 定义的场景：
-//   - 创建问答会话 → 返回答案和来源
+//   - 创建问答会话 → 返回答案
 //   - 低置信度 → can_submit_ticket=true
 //   - 提交反馈 → 反馈状态验证
-//   - AI 服务不可用降级
 //
-// RagClient 使用 mock（因为测试环境无可用的 AnythingLLM 实例），
+// v2 迁移说明：RagClient（AnythingLLM）已移除，ChatService 使用 v1 占位实现。
+// 所有会话的 answer 统一返回降级兜底文本，confidence 为 0。
+// 真正的 RAG 流式问答由 ChatServiceV2（SSE 端点）提供。
+//
 // 数据库使用真实 PostgreSQL opsmind_test 库。
 package integration_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http/httptest"
 	"testing"
 
-	"opsmind/internal/adapter"
 	"opsmind/internal/config"
 	"opsmind/internal/database"
 	"opsmind/internal/dto/response"
@@ -38,43 +37,14 @@ import (
 )
 
 // =============================================================================
-// Mock RagClient（集成测试用）
-// =============================================================================
-
-// chatIntMockRAG 集成测试用的 RagClient mock。
-//
-// 与 handler_test 中的 mock 不同，此 mock 支持更复杂的场景注入：
-// 正常回答、低置信度、服务不可达等。
-type chatIntMockRAG struct {
-	queryFunc func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error)
-}
-
-func (m *chatIntMockRAG) Query(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-	if m.queryFunc != nil {
-		return m.queryFunc(ctx, req)
-	}
-	return &adapter.RAGQueryResponse{Answer: "默认回答", Confidence: 0.9}, nil
-}
-func (m *chatIntMockRAG) CreateWorkspace(ctx context.Context, req adapter.RAGCreateWorkspaceRequest) (*adapter.RAGCreateWorkspaceResponse, error) {
-	return &adapter.RAGCreateWorkspaceResponse{Slug: "itg-ws"}, nil
-}
-func (m *chatIntMockRAG) SyncDocument(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error) {
-	return &adapter.RAGSyncResponse{DocumentLocation: "itg-doc-loc"}, nil
-}
-func (m *chatIntMockRAG) DisableDocument(ctx context.Context, req adapter.RAGDisableRequest) error {
-	return nil
-}
-
-// =============================================================================
 // 测试环境
 // =============================================================================
 
 // chatIntEnv 封装问答集成测试环境。
 type chatIntEnv struct {
-	r       *gin.Engine
-	db      *gorm.DB
-	mockRAG *chatIntMockRAG
-	kb      *model.KnowledgeBase
+	r  *gin.Engine
+	db *gorm.DB
+	kb *model.KnowledgeBase
 }
 
 // setupChatIntegration 创建问答集成测试环境。
@@ -158,11 +128,10 @@ func setupChatIntegration(t *testing.T) *chatIntEnv {
 	}
 	require.NoError(t, db.Create(kb).Error)
 
-	// 组装依赖链
+	// 组装依赖链（v1：RagClient 已移除，ChatService 使用占位实现）
 	knowledgeRepo := repository.NewKnowledgeRepo(db)
 	chatRepo := repository.NewChatRepo(db)
-	mockRAG := &chatIntMockRAG{}
-	chatSvc := service.NewChatService(knowledgeRepo, chatRepo, mockRAG)
+	chatSvc := service.NewChatService(knowledgeRepo, chatRepo)
 	chatH := handler.NewChatHandler(chatSvc)
 
 	// 路由（模拟认证中间件注入 user_id=1）
@@ -180,7 +149,7 @@ func setupChatIntegration(t *testing.T) *chatIntEnv {
 		portal.GET("/chat-sessions/:id", chatH.GetChatDetail)
 	}
 
-	return &chatIntEnv{r: r, db: db, mockRAG: mockRAG, kb: kb}
+	return &chatIntEnv{r: r, db: db, kb: kb}
 }
 
 // =============================================================================
@@ -189,21 +158,12 @@ func setupChatIntegration(t *testing.T) *chatIntEnv {
 
 // TestChatIntegration_FullFlow 验证完整问答流程。
 //
-// 流程：创建问答会话（高置信度）→ 验证答案和来源 → 提交反馈 → 查询验证反馈
+// 流程：创建问答会话 → 验证兜底回答 → 提交反馈 → 查询验证反馈 → 检查数据持久化。
 func TestChatIntegration_FullFlow(t *testing.T) {
 	env := setupChatIntegration(t)
 
-	// 配置 mock 返回高置信度答案
-	env.mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		return &adapter.RAGQueryResponse{
-			Answer:     "请尝试重启路由器并检查网线连接。",
-			Confidence: 0.85,
-			Sources: []adapter.RAGSource{
-				{DocName: "网络故障排查指南", ChunkContent: "步骤一：重启设备...", Confidence: 0.85},
-				{DocName: "常见问题 FAQ", ChunkContent: "网络连接异常时...", Confidence: 0.72},
-			},
-		}, nil
-	}
+	// v2 迁移：RagClient 已移除，ChatService(v1) 对所有请求返回兜底回答。
+	// 真正的 RAG 流式问答由 ChatServiceV2 通过 SSE 端点提供。
 
 	// 1. 创建问答会话
 	askBody, _ := json.Marshal(map[string]interface{}{
@@ -219,7 +179,7 @@ func TestChatIntegration_FullFlow(t *testing.T) {
 	assert.Equal(t, 200, askW.Code, "创建问答应返回 200")
 
 	var createResp struct {
-		Code int                        `json:"code"`
+		Code int                          `json:"code"`
 		Data response.ChatSessionResponse `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(askW.Body.Bytes(), &createResp))
@@ -227,15 +187,13 @@ func TestChatIntegration_FullFlow(t *testing.T) {
 
 	sessionID := createResp.Data.SessionID
 	assert.NotZero(t, sessionID, "应返回 SessionID")
-	assert.Equal(t, "请尝试重启路由器并检查网线连接。", createResp.Data.Answer)
-	assert.False(t, createResp.Data.CanSubmitTicket, "高置信度时不应引导提交申告")
-	assert.Len(t, createResp.Data.Sources, 2, "应返回 2 条来源")
-	assert.Equal(t, "网络故障排查指南", createResp.Data.Sources[0].DocName)
-	// DurationMS 在 mock 环境下可能为 0（RagClient 瞬间返回），
-	// 生产环境中会有网络延迟，此处仅验证字段存在即可。
-	assert.GreaterOrEqual(t, createResp.Data.DurationMS, 0, "DurationMS 应 >= 0")
-	t.Logf("✅ 步骤1: 问答创建成功，答案='%s'，来源=%d，置信度=%.2f",
-		createResp.Data.Answer, len(createResp.Data.Sources), createResp.Data.Confidence)
+	// v1 占位实现：统一返回降级兜底文本
+	assert.NotEmpty(t, createResp.Data.Answer, "应返回兜底回答")
+	assert.True(t, createResp.Data.CanSubmitTicket, "v1 占位实现中 CanSubmitTicket 应为 true")
+	assert.Nil(t, createResp.Data.Sources, "v1 占位实现不返回知识来源")
+	assert.GreaterOrEqual(t, createResp.Data.DurationMS, int64(0), "DurationMS 应 >= 0")
+	t.Logf("✅ 步骤1: 问答创建成功，answer='%s'，conf=%.2f",
+		createResp.Data.Answer, createResp.Data.Confidence)
 
 	// 2. 提交反馈（已解决）
 	feedbackBody, _ := json.Marshal(map[string]interface{}{"feedback": 1}) // 1=resolved
@@ -280,17 +238,11 @@ func TestChatIntegration_FullFlow(t *testing.T) {
 // =============================================================================
 
 // TestChatIntegration_LowConfidenceToTicket 验证低置信度时引导用户提交申告。
+//
+// v2 迁移：RagClient 已移除，v1 占位实现中所有回答均为低置信度（0），
+// CanSubmitTicket 永远为 true。此测试验证该行为符合预期。
 func TestChatIntegration_LowConfidenceToTicket(t *testing.T) {
 	env := setupChatIntegration(t)
-
-	// 模拟低置信度回答
-	env.mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		return &adapter.RAGQueryResponse{
-			Answer:     "暂未找到足够匹配的知识，建议提交申告由运维人员人工处理",
-			Confidence: 0.35,
-			Sources:    nil,
-		}, nil
-	}
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"question": "非常专业的运维问题",
@@ -307,10 +259,9 @@ func TestChatIntegration_LowConfidenceToTicket(t *testing.T) {
 		Data response.ChatSessionResponse `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.True(t, resp.Data.CanSubmitTicket, "低置信度时 CanSubmitTicket 应为 true")
-	assert.NotEmpty(t, resp.Data.Answer, "低置信度时也应有兜底回答")
-	t.Logf("✅ 低置信度 (%.2f) → CanSubmitTicket=true, 兜底回答='%s'",
-		resp.Data.Confidence, resp.Data.Answer)
+	assert.True(t, resp.Data.CanSubmitTicket, "v1 占位实现中 CanSubmitTicket 应为 true")
+	assert.NotEmpty(t, resp.Data.Answer, "应有兜底回答")
+	t.Logf("✅ 低置信度（confidence=0）→ CanSubmitTicket=true, 兜底回答='%s'", resp.Data.Answer)
 }
 
 // =============================================================================
@@ -318,13 +269,11 @@ func TestChatIntegration_LowConfidenceToTicket(t *testing.T) {
 // =============================================================================
 
 // TestChatIntegration_AIServiceUnavailable 验证 AI 服务不可用时的降级处理。
+//
+// v2 迁移：RagClient 已移除，v1 占位实现不依赖外部 AI 服务，
+// 所有请求统一按降级路径处理，返回兜底回答（code=0）。
 func TestChatIntegration_AIServiceUnavailable(t *testing.T) {
 	env := setupChatIntegration(t)
-
-	// 模拟 RagClient 返回网络错误
-	env.mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		return nil, errors.New("connection refused")
-	}
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"question": "任何问题",
@@ -335,17 +284,13 @@ func TestChatIntegration_AIServiceUnavailable(t *testing.T) {
 	w := httptest.NewRecorder()
 	env.r.ServeHTTP(w, req)
 
-	// AI 不可用时，ChatService 返回 AppError{Code: 20001}，
-	// Handler 层将 AppError 映射为 HTTP 500 + 错误码 20001。
-	// 这是当前设计的降级策略：AI 不可达时返回明确错误码供前端识别。
+	// v1 占位：不调用 AI，直接返回兜底回答
 	var resp struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
+		Code int `json:"code"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, 20001, resp.Code, "AI 不可用错误码应为 20001")
-	assert.NotEmpty(t, resp.Message, "应有错误消息")
-	t.Logf("✅ AI 不可用 → 错误码 20001, message='%s'", resp.Message)
+	assert.Equal(t, 0, resp.Code, "v1 占位实现不依赖 AI，应正常返回 code=0")
+	t.Logf("✅ AI 不可用降级 → code=0（占位实现，不依赖外部 AI 服务）")
 }
 
 // =============================================================================

@@ -10,13 +10,11 @@ package handler_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 
-	"opsmind/internal/adapter"
 	"opsmind/internal/config"
 	"opsmind/internal/database"
 	respDto "opsmind/internal/dto/response"
@@ -31,39 +29,14 @@ import (
 )
 
 // =============================================================================
-// Mock RagClient
-// =============================================================================
-
-type mockChatHandlerRagClient struct {
-	queryFunc func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error)
-}
-
-func (m *mockChatHandlerRagClient) Query(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-	if m.queryFunc != nil {
-		return m.queryFunc(ctx, req)
-	}
-	return &adapter.RAGQueryResponse{Answer: "默认回答", Confidence: 0.9}, nil
-}
-func (m *mockChatHandlerRagClient) CreateWorkspace(ctx context.Context, req adapter.RAGCreateWorkspaceRequest) (*adapter.RAGCreateWorkspaceResponse, error) {
-	return &adapter.RAGCreateWorkspaceResponse{Slug: "test"}, nil
-}
-func (m *mockChatHandlerRagClient) SyncDocument(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error) {
-	return &adapter.RAGSyncResponse{DocumentLocation: "test"}, nil
-}
-func (m *mockChatHandlerRagClient) DisableDocument(ctx context.Context, req adapter.RAGDisableRequest) error {
-	return nil
-}
-
-// =============================================================================
 // 测试环境
 // =============================================================================
 
 // chatHandlerEnv 封装 ChatHandler 测试环境。
 type chatHandlerEnv struct {
-	r       *gin.Engine
-	db      *gorm.DB
-	mockRAG *mockChatHandlerRagClient
-	kb      *model.KnowledgeBase
+	r  *gin.Engine
+	db *gorm.DB
+	kb *model.KnowledgeBase
 }
 
 func setupChatHandlerTest(t *testing.T) *chatHandlerEnv {
@@ -118,8 +91,7 @@ func setupChatHandlerTest(t *testing.T) *chatHandlerEnv {
 	// 组装依赖链
 	knowledgeRepo := repository.NewKnowledgeRepo(db)
 	chatRepo := repository.NewChatRepo(db)
-	mockRAG := &mockChatHandlerRagClient{}
-	chatSvc := service.NewChatService(knowledgeRepo, chatRepo, mockRAG)
+	chatSvc := service.NewChatService(knowledgeRepo, chatRepo)
 	chatH := handler.NewChatHandler(chatSvc)
 
 	// 路由
@@ -138,7 +110,7 @@ func setupChatHandlerTest(t *testing.T) *chatHandlerEnv {
 		portal.GET("/chat-sessions/:id", chatH.GetChatDetail)
 	}
 
-	return &chatHandlerEnv{r: r, db: db, mockRAG: mockRAG, kb: kb}
+	return &chatHandlerEnv{r: r, db: db, kb: kb}
 }
 
 // =============================================================================
@@ -147,14 +119,6 @@ func setupChatHandlerTest(t *testing.T) *chatHandlerEnv {
 
 func TestChatHandler_CreateSession_Success(t *testing.T) {
 	env := setupChatHandlerTest(t)
-
-	env.mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		return &adapter.RAGQueryResponse{
-			Answer:     "请重启路由器",
-			Confidence: 0.9,
-			Sources:    []adapter.RAGSource{{DocName: "网络故障指南", ChunkContent: "...", Confidence: 0.9}},
-		}, nil
-	}
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"question": "网络连不上怎么办？",
@@ -175,23 +139,16 @@ func TestChatHandler_CreateSession_Success(t *testing.T) {
 	}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 
-	if resp.Data.Answer != "请重启路由器" {
-		t.Errorf("期望 Answer='请重启路由器', got '%s'", resp.Data.Answer)
-	}
-	if resp.Data.CanSubmitTicket {
-		t.Error("高置信度时 CanSubmitTicket 应为 false")
-	}
 	if resp.Data.SessionID == 0 {
 		t.Error("应填充 SessionID")
+	}
+	if resp.Data.Question != "网络连不上怎么办？" {
+		t.Errorf("期望 Question='网络连不上怎么办？', got '%s'", resp.Data.Question)
 	}
 }
 
 func TestChatHandler_CreateSession_LowConfidence(t *testing.T) {
 	env := setupChatHandlerTest(t)
-
-	env.mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		return &adapter.RAGQueryResponse{Answer: "...", Confidence: 0.3}, nil
-	}
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"question": "复杂问题",
@@ -212,7 +169,7 @@ func TestChatHandler_CreateSession_LowConfidence(t *testing.T) {
 	}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if !resp.Data.CanSubmitTicket {
-		t.Error("低置信度时 CanSubmitTicket 应为 true")
+		t.Error("v1 占位响应置信度为 0，CanSubmitTicket 应为 true")
 	}
 }
 
@@ -243,9 +200,6 @@ func TestChatHandler_SubmitFeedback(t *testing.T) {
 	env := setupChatHandlerTest(t)
 
 	// 先创建一个会话
-	env.mockRAG.queryFunc = func(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-		return &adapter.RAGQueryResponse{Answer: "答案", Confidence: 0.9}, nil
-	}
 	createBody, _ := json.Marshal(map[string]interface{}{
 		"question": "问题", "kb_id": env.kb.ID,
 	})

@@ -4,9 +4,9 @@
 | --- | --- |
 | 文档版本 | v2.0 |
 | 日期 | 2026-06-11 |
+| 实施状态 | ✅ 已完成（M1-M7 全部交付） |
 | 适用范围 | RAG 对话模块完整重构，覆盖 LLM/Embedding、文档解析、向量存储、RAG 管道、知识模型 |
-| 关联文档 | `docs/v1/PRD.md`（v1 原始需求）、`docs/v1/TECH.md`（v1 技术架构）、`docs/v1/ANYTHINGLLM_AI_INTEGRATION.md`（v1 集成方案，将被本 PRD 替代） |
-| 参考项目 | `C:\Users\int2t\Desktop\Projects\Personal\rag-engine`（Python FastAPI 实现，作为架构和算法参考） |
+| 关联文档 | [CHANGELOG](CHANGELOG.md) · [TECHv2](TECHv2.md) · [PLANv2](PLANv2.md) · [API 文档](../API/README.md) |
 
 ---
 

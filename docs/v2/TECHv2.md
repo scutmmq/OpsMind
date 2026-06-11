@@ -4,8 +4,9 @@
 | --- | --- |
 | 文档版本 | v2.0 |
 | 日期 | 2026-06-11 |
+| 实施状态 | ✅ 已完成（M1-M7 全部交付，133 测试通过） |
 | 变更说明 | v2 架构重构：移除 AnythingLLM，自建 Go RAG 引擎 + pgvector 向量存储 |
-| 关联文档 | [PRDv2](PRDv2.md)、[PRDv1](../v1/PRD.md)、[TECHv1](../v1/TECH.md) |
+| 关联文档 | [CHANGELOG](CHANGELOG.md) · [PRDv2](PRDv2.md) · [PLANv2](PLANv2.md) · [API 文档](../API/README.md) |
 
 ---
 

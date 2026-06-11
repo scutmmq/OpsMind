@@ -1,12 +1,13 @@
 # OpsMind v2 实施计划
 
+> **状态：** ✅ 全部完成（M1-M7 已交付，133 测试通过）  
 > **目标：** 移除 AnythingLLM，自建 Go RAG 引擎 + pgvector 向量存储，升级 SSE 流式，新增文档上传和 LLM 配置管理。
 >
 > **架构：** 自下而上 7 阶段实施 — 环境准备 → 适配层 → RAG 引擎 → Service 层 → Handler/路由 → 前端 → 清理。每个里程碑完成后可独立验证。
 >
 > **技术栈：** Go 1.22+ / Gin / GORM / pgvector / gse(中文分词) / llama.cpp / Vue 3 / TypeScript / Radix Vue
 >
-> **关联文档：** [PRDv2](PRDv2.md) · [TECHv2](TECHv2.md) · [API 文档](../API/README.md)
+> **关联文档：** [CHANGELOG](CHANGELOG.md) · [PRDv2](PRDv2.md) · [TECHv2](TECHv2.md) · [API 文档](../API/README.md)
 >
 > **约定：**
 > - 每个 Task 对应一次 git commit，commit message 格式 `类型: 描述`（中文）

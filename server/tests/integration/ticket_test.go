@@ -125,7 +125,7 @@ func setupTicketIntegration(t *testing.T) *ticketIntEnv {
 	// 组装依赖链
 	ticketRepo := repository.NewTicketRepo(db)
 	ticketSvc := service.NewTicketService(ticketRepo)
-	ticketH := handler.NewTicketHandler(ticketSvc)
+	ticketH := handler.NewTicketHandler(ticketSvc, nil)
 
 	// 路由
 	r := gin.New()

@@ -134,8 +134,7 @@ func (h *ChatHandler) GetChatDetail(c *gin.Context) {
 // 为什么在 Handler 层而非 Service 层做流式：
 // SSE 是 HTTP 传输层关注点。Service 层返回完整业务结果，
 // Handler 层决定以 JSON 还是 SSE 交付，符合单一职责原则。
-// 后续 RagClient 支持原生流式时，可在 Service 层引入 channel 回调，
-// Handler 层无需变更。
+// v2: 通过 LLMClient.ChatCompletionStream 实现真正的 token 级流式。
 func (h *ChatHandler) StreamChatSession(c *gin.Context) {
 	var req request.CreateChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

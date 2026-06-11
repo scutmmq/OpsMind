@@ -3,24 +3,24 @@
 // Package integration_test 验证知识库模块的端到端完整生命周期。
 //
 // 测试覆盖 PLAN.md Task36 定义的场景：
-//   - 创建知识库 → 创建知识条目 → 提交审核 → 审核通过 → 发布 → 同步状态验证
-//   - 停用知识 → 同步状态变为 disabled
-//   - 重试同步
+//   - 创建知识库 → 创建知识条目 → 提交审核 → 审核通过 → 发布 → 停用 → 重试同步
 //   - 审核驳回流程
+//   - 知识库列表和文章列表查询
 //
-// RagClient 使用 mock（测试环境无可用的 AnythingLLM 实例），
+// v2 迁移说明：RagClient（AnythingLLM）已移除，KnowledgeService(v1) 中的
+// Publish/Disable/RetrySync 仅管理数据库状态，不再调用外部 RAG 服务。
+// 真正的向量同步由 KnowledgeServiceV2（自建 pgvector 管道）负责。
+//
 // 数据库使用真实 PostgreSQL opsmind_test 库。
 package integration_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"testing"
 
-	"opsmind/internal/adapter"
 	"opsmind/internal/config"
 	"opsmind/internal/database"
 	"opsmind/internal/dto/request"
@@ -37,59 +37,13 @@ import (
 )
 
 // =============================================================================
-// Mock RagClient（知识库集成测试用）
-// =============================================================================
-
-// knowledgeIntMockRAG 知识库集成测试用的 RagClient mock。
-//
-// 支持记录调用状态，便于验证发布/停用/重试同步的完整调用链。
-type knowledgeIntMockRAG struct {
-	createWorkspaceCalls int
-	syncDocumentCalls    int
-	disableDocumentCalls int
-	lastDocLocation      string
-	lastDisabledDocs     []string
-	// 可注入的错误
-	syncError    error
-	disableError error
-}
-
-func (m *knowledgeIntMockRAG) Query(ctx context.Context, req adapter.RAGQueryRequest) (*adapter.RAGQueryResponse, error) {
-	return &adapter.RAGQueryResponse{Answer: "mock", Confidence: 0.8}, nil
-}
-
-func (m *knowledgeIntMockRAG) CreateWorkspace(ctx context.Context, req adapter.RAGCreateWorkspaceRequest) (*adapter.RAGCreateWorkspaceResponse, error) {
-	m.createWorkspaceCalls++
-	return &adapter.RAGCreateWorkspaceResponse{Slug: "itg-kb-ws-" + req.Name}, nil
-}
-
-func (m *knowledgeIntMockRAG) SyncDocument(ctx context.Context, req adapter.RAGSyncRequest) (*adapter.RAGSyncResponse, error) {
-	m.syncDocumentCalls++
-	if m.syncError != nil {
-		return nil, m.syncError
-	}
-	m.lastDocLocation = "itg-doc-" + req.Title
-	return &adapter.RAGSyncResponse{DocumentLocation: m.lastDocLocation}, nil
-}
-
-func (m *knowledgeIntMockRAG) DisableDocument(ctx context.Context, req adapter.RAGDisableRequest) error {
-	m.disableDocumentCalls++
-	if m.disableError != nil {
-		return m.disableError
-	}
-	m.lastDisabledDocs = req.DocumentLocations
-	return nil
-}
-
-// =============================================================================
 // 测试环境
 // =============================================================================
 
 // knowledgeIntEnv 封装知识库集成测试环境。
 type knowledgeIntEnv struct {
-	r       *gin.Engine
-	db      *gorm.DB
-	mockRAG *knowledgeIntMockRAG
+	r  *gin.Engine
+	db *gorm.DB
 }
 
 // setupKnowledgeIntegration 创建知识库集成测试环境。
@@ -166,10 +120,9 @@ func setupKnowledgeIntegration(t *testing.T) *knowledgeIntEnv {
 	db.Exec("DELETE FROM knowledge_bases")
 	db.Exec("DELETE FROM embedding_configs")
 
-	// 组装依赖链
+	// 组装依赖链（v1：RagClient 已移除，KnowledgeService 管理数据库状态）
 	knowledgeRepo := repository.NewKnowledgeRepo(db)
-	mockRAG := &knowledgeIntMockRAG{}
-	knowledgeSvc := service.NewKnowledgeService(knowledgeRepo, mockRAG)
+	knowledgeSvc := service.NewKnowledgeService(knowledgeRepo)
 	knowledgeH := handler.NewKnowledgeHandler(knowledgeSvc)
 
 	// 路由（模拟管理员用户 user_id=1）
@@ -205,7 +158,7 @@ func setupKnowledgeIntegration(t *testing.T) *knowledgeIntEnv {
 		admin.POST("/embedding-configs", knowledgeH.CreateEmbeddingConfig)
 	}
 
-	return &knowledgeIntEnv{r: r, db: db, mockRAG: mockRAG}
+	return &knowledgeIntEnv{r: r, db: db}
 }
 
 // postJSON 发送 JSON POST 请求并返回响应 body。
@@ -225,8 +178,9 @@ func postJSON(t *testing.T, env *knowledgeIntEnv, url string, body interface{}) 
 
 // TestKnowledgeIntegration_FullLifecycle 验证完整知识生命周期。
 //
-// 流程：创建知识库 → 创建草稿 → 提交审核 → 审核通过 → 发布 →
-// 验证同步状态 → 停用 → 重试同步
+// 流程：创建知识库 → 创建草稿 → 提交审核 → 审核通过 → 发布 → 停用 → 重试同步。
+// v2 迁移：RagClient 已移除，Publish/Disable/RetrySync 仅管理数据库状态，
+// 不再调用外部 RAG 服务。
 func TestKnowledgeIntegration_FullLifecycle(t *testing.T) {
 	env := setupKnowledgeIntegration(t)
 
@@ -243,9 +197,7 @@ func TestKnowledgeIntegration_FullLifecycle(t *testing.T) {
 	env.db.Order("id desc").First(&kb)
 	kbID := kb.ID
 	assert.NotZero(t, kbID)
-	assert.Equal(t, 1, env.mockRAG.createWorkspaceCalls,
-		"创建知识库应调用 RagClient.CreateWorkspace")
-	t.Logf("✅ 步骤1: 知识库创建成功, ID=%d, CreateWorkspace 已调用", kbID)
+	t.Logf("✅ 步骤1: 知识库创建成功, ID=%d", kbID)
 
 	// 2. 创建知识文章（草稿, status=1）— handler 返回 data=nil，从 DB 获取 ID
 	articleBody := postJSON(t, env, fmt.Sprintf("/api/v1/admin/knowledge-bases/%d/articles", kbID),
@@ -292,65 +244,41 @@ func TestKnowledgeIntegration_FullLifecycle(t *testing.T) {
 	env.db.First(&article, articleID)
 	assert.Equal(t, int16(3), article.Status, "审核通过后状态应为 3(已审核)")
 
-	// 5. 发布 → status: 3→4, 调用 SyncDocument
+	// 5. 发布 → status: 3→4
+	// v2 迁移：RagClient 已移除，发布仅更新数据库状态，不再调用 SyncDocument。
 	publishBody := postJSON(t, env, fmt.Sprintf("/api/v1/admin/articles/%d/publish", articleID), nil)
 	var publishResp struct{ Code int }
 	require.NoError(t, json.Unmarshal(publishBody, &publishResp))
 	assert.Equal(t, 0, publishResp.Code, "发布业务码应为 0")
 	t.Logf("✅ 步骤5: 发布成功")
 
-	// 验证 SyncDocument 被调用
-	assert.Equal(t, 1, env.mockRAG.syncDocumentCalls,
-		"发布应调用 RagClient.SyncDocument")
-	t.Logf("   SyncDocument 调用次数=%d, doc_location=%s",
-		env.mockRAG.syncDocumentCalls, env.mockRAG.lastDocLocation)
-
-	// 验证文章状态和 sync 信息
+	// 验证文章状态为已发布
 	env.db.First(&article, articleID)
 	assert.Equal(t, int16(4), article.Status, "发布后状态应为 4(已发布)")
 	t.Logf("   文章状态=已发布(4)")
 
-	// 验证 chunk 同步状态
-	var chunks []model.KnowledgeChunk
-	env.db.Where("article_id = ?", articleID).Find(&chunks)
-	for i, c := range chunks {
-		assert.Equal(t, "synced", c.SyncStatus, "chunk[%d] sync_status 应为 synced", i)
-	}
-	t.Logf("✅ 同步状态验证: %d 个 chunks 状态均为 synced", len(chunks))
-
-	// 6. 停用知识 → 调用 DisableDocument
+	// 6. 停用知识 → status: 4→0
 	disableBody := postJSON(t, env, fmt.Sprintf("/api/v1/admin/articles/%d/disable", articleID), nil)
 	var disableResp struct{ Code int }
 	require.NoError(t, json.Unmarshal(disableBody, &disableResp))
 	assert.Equal(t, 0, disableResp.Code, "停用业务码应为 0")
 	t.Logf("✅ 步骤6: 停用成功")
 
-	assert.Equal(t, 1, env.mockRAG.disableDocumentCalls,
-		"停用应调用 RagClient.DisableDocument")
+	// 验证文章状态为已停用
+	env.db.First(&article, articleID)
+	assert.Equal(t, int16(0), article.Status, "停用后状态应为 0(已停用)")
+	t.Logf("   文章状态=已停用(0)")
 
-	// 验证 chunk sync_status 变为 disabled
-	env.db.Where("article_id = ?", articleID).Find(&chunks)
-	for i, c := range chunks {
-		assert.Equal(t, "disabled", c.SyncStatus, "chunk[%d] sync_status 应为 disabled", i)
-	}
-	t.Logf("✅ chunks 同步状态已变为 disabled")
-
-	// 7. 重试同步 → 再次调用 SyncDocument
+	// 7. 重试同步 → 仅重置数据库同步状态（v1 占位，不调用 RAG）
 	retryBody := postJSON(t, env, fmt.Sprintf("/api/v1/admin/articles/%d/retry-sync", articleID), nil)
 	var retryResp struct{ Code int }
 	require.NoError(t, json.Unmarshal(retryBody, &retryResp))
 	assert.Equal(t, 0, retryResp.Code, "重试同步业务码应为 0")
 	t.Logf("✅ 步骤7: 重试同步成功")
 
-	assert.Equal(t, 2, env.mockRAG.syncDocumentCalls,
-		"重试同步应再次调用 SyncDocument（总调用次数=2）")
-
-	// 验证同步状态恢复为 synced
-	env.db.Where("article_id = ?", articleID).Find(&chunks)
-	for i, c := range chunks {
-		assert.Equal(t, "synced", c.SyncStatus, "重试后 chunk[%d] sync_status 应为 synced", i)
-	}
-	t.Logf("✅ 重试同步后 chunks 状态恢复为 synced")
+	// 验证文章状态不变
+	env.db.First(&article, articleID)
+	assert.Equal(t, int16(0), article.Status, "重试同步不应改变文章状态")
 }
 
 // =============================================================================
