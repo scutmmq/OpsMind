@@ -1,14 +1,15 @@
-# OpsMind — 运维数字员工系统
+# 🤖 OpsMind — 运维数字员工系统
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go" alt="Go">
+  <img src="https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go" alt="Go">
   <img src="https://img.shields.io/badge/Vue-3.4+-4FC08D?logo=vuedotjs" alt="Vue">
+  <img src="https://img.shields.io/badge/Naive_UI-2.43+-18a058?logo=naiveui" alt="Naive UI">
   <img src="https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/pgvector-0.7+-brightgreen" alt="pgvector">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
 </p>
 
-面向企业运维场景的 AI 数字员工系统。基于 **Go + Vue 3** 单体分层架构，集成 **AnythingLLM RAG** 实现智能问答、申告管理、知识库管理和 RBAC 权限控制，支持本地化大模型私有部署。
+**本地化大模型驱动的企业运维 AI 数字员工** — 基于 Go + Vue 3 分层架构，集成 AnythingLLM RAG 实现智能问答、申告全流程管理、知识库审核发布和 RBAC 权限控制，支持完全私有部署。
 
 ## 功能特性
 
@@ -27,16 +28,20 @@
 
 ## 技术栈
 
-| 层级 | 技术 | 版本 |
+| 层级 | 技术 | 说明 |
 |------|------|------|
-| 后端框架 | Go + Gin | 1.22+ / 1.9+ |
-| ORM | GORM | v1.25+ |
-| 数据库 | PostgreSQL + pgvector | 18 / 0.7+ |
-| 认证 | JWT (golang-jwt) | v5 |
-| 前端框架 | Vue 3 + TypeScript | 3.4+ |
-| UI 组件 | Radix Vue | 1.9+ |
-| 状态管理 | Pinia | 2.1+ |
-| 路由 | Vue Router | 4.3+ |
+| 后端框架 | Go + Gin | REST API 服务，Handler→Service→Repository 三层架构 |
+| ORM | GORM | PostgreSQL 数据访问 + AutoMigrate |
+| 数据库 | PostgreSQL 18 + pgvector | 业务数据 + 系统侧向量追溯 |
+| RAG 服务 | AnythingLLM | Docker 内部组件，知识检索增强生成 |
+| AI 推理 | vLLM / OpenAI / Ollama | 通过 AnythingLLM generic-openai 接入 |
+| 对象存储 | MinIO | S3-compatible，申告附件 + 知识文档 |
+| 认证 | JWT (golang-jwt v5) | access_token 2h + refresh_token 7d |
+| 前端框架 | Vue 3 + TypeScript | Composition API + script setup |
+| UI 组件 | Naive UI | Tree-shakable，dark/light 双主题 |
+| 状态管理 | Pinia | auth / chat / app 三个 store |
+| 路由 | Vue Router | 路由守卫 + 动态菜单渲染 |
+| 部署 | Docker Compose | 7 服务一键编排 |
 
 ---
 
@@ -252,10 +257,10 @@ curl -s -X POST http://localhost:8080/api/v1/auth/login \
 ```
 OpsMind/
 ├── docs/                              # 项目文档
-│   ├── PRD.md                          # 产品需求文档 v2.2
-│   ├── TECH.md                         # 技术架构文档 v1.2
+│   ├── PRD.md                          # 产品需求文档
+│   ├── TECH.md                         # 技术架构文档
 │   ├── PLAN.md                         # 实施计划（38 任务，6 里程碑）
-│   └── ANYTHINGLLM_AI_INTEGRATION.md    # AnythingLLM 集成方案 v1.1
+│   └── ANYTHINGLLM_AI_INTEGRATION.md    # AnythingLLM RAG 集成方案
 │
 ├── server/                            # Go 后端
 │   ├── cmd/main.go                    # 入口（DB→Repo→Service→Handler→Router→Scheduler）
@@ -344,40 +349,27 @@ docker compose down -v         # 停止并清除数据
 
 ---
 
-## 文档索引
+## 架构与设计
+
+OpsMind 采用 **Modular Monolith** 架构，模块边界清晰，后续可独立拆分。
+
+```
+Handler → Service → Repository → PostgreSQL
+                ↘ Adapter → AnythingLLM / MinIO
+```
+
+详细的架构设计、API 端点、数据库 ER 图和业务数据流见文档：
 
 | 文档 | 说明 |
 |------|------|
-| [PRD.md](docs/PRD.md) | 产品需求文档 v2.2 |
-| [TECH.md](docs/TECH.md) | 技术架构文档 v1.2 |
-| [PLAN.md](docs/PLAN.md) | 实施计划（38 任务，6 里程碑） |
-| [ANYTHINGLLM_AI_INTEGRATION.md](docs/ANYTHINGLLM_AI_INTEGRATION.md) | AnythingLLM 集成方案 v1.1 |
-| [CLAUDE.md](CLAUDE.md) | 项目上下文指令（AI 开发辅助） |
+| [TECH.md](docs/TECH.md) | 技术架构文档 — 分层架构、数据库设计、API 端点、安全策略 |
+| [PRD.md](docs/PRD.md) | 产品需求文档 — 用户故事、业务流程、验收标准 |
+| [ANYTHINGLLM_AI_INTEGRATION.md](docs/ANYTHINGLLM_AI_INTEGRATION.md) | RAG 集成方案 — Docker 编排、API 接入、降级策略 |
+| [业务数据流图](docs/diagrams/) | 7 组 Mermaid 图表 — 精确到函数名的完整调用链 |
 
----
+## 参与贡献
 
-## 预设角色与权限
+欢迎提交 Issue 和 Pull Request。贡献前请阅读 [CLAUDE.md](CLAUDE.md) 了解项目的代码规范和架构约定。
 
-| 角色 | 典型权限 |
-|------|---------|
-| 系统管理员 | ticket:read/write/assign, knowledge:read/write/review, system:config, user:manage, audit:read |
-| 运维人员 | ticket:read/write, knowledge:read/write |
-| 知识库管理员 | knowledge:read/write/review |
-| 报障人 | 无后台权限，仅门户端 |
+本项目采用 MIT 许可证，详见 [LICENSE](LICENSE)。
 
-## 错误码速查
-
-| 错误码 | HTTP 状态 | 说明 |
-|--------|----------|------|
-| 0 | 200 | 成功 |
-| 10001 | 401 | 未登录或令牌过期 |
-| 10002 | 403 | 无权限 |
-| 10003 | 400 | 参数校验失败 |
-| 10004 | 404 | 资源不存在 |
-| 10005 | 409 | 资源冲突（如用户名重复） |
-| 10006 | 409 | 用户已被冻结 |
-| 10007 | 409 | 用户已处于正常状态 |
-| 20001 | 500 | AI 服务不可用 |
-| 20002 | 500 | RAG 服务不可用 |
-| 20003 | 500 | 存储服务不可用 |
-| 99999 | 500 | 未知错误 |
