@@ -98,12 +98,11 @@
 </template>
 
 <script setup lang="ts">
-// TODO(admin/KnowledgeList): statusClass/statusText/processClass/processText 与 KnowledgeEdit 重复 — 应提取到 utils/knowledge.ts。
-// TODO(admin/KnowledgeList): API 错误仅 console.error，无用户可见提示。
-// TODO(admin/KnowledgeList): 使用 (res.data as any) 强制类型转换 — 等 API 泛型补全后移除。
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Pagination from '@/components/common/Pagination.vue'
+import { articleStatusClass as statusClass, articleStatusText as statusText, processClass, processText } from '@/utils/knowledge'
+import { useToast } from '@/composables/useToast'
 import { listKnowledgeBases, createKnowledgeBase, listArticles, submitReview, publishArticle, disableArticle, enableArticle, retryDocument } from '@/api/knowledge'
 
 interface KB { id: number; name: string }
@@ -121,11 +120,12 @@ const statusFilter = ref(-1)
 const sourceTypeFilter = ref(-1)  // v2: 来源类型筛选
 const showKBDialog = ref(false)
 const newKB = ref({ name: '', description: '' })
+const toast = useToast()
 
 onMounted(() => { fetchKBs() })
 
 const fetchKBs = async () => {
-  try { const res = await listKnowledgeBases(); kbList.value = (res.data as any).items || (res as any).items || [] } catch (e) { console.error(e) }
+  try { const res = await listKnowledgeBases(); kbList.value = (res.data as any).items || (res as any).items || [] } catch (e) { console.error(e); toast.showToast('加载知识库列表失败', 'error') }
 }
 const selectKB = (kb: KB) => { selectedKB.value = kb; currentPage.value = 1; fetchArticles() }
 const fetchArticles = async () => {
@@ -137,7 +137,7 @@ const fetchArticles = async () => {
     const res = await listArticles(selectedKB.value.id, params)
     const list = Array.isArray(res.data) ? res.data : (res.data.items || [])
     articles.value = list; total.value = res.data.total || list.length || 0
-  } catch (e) { console.error(e) }
+  } catch (e) { console.error(e); toast.showToast('加载文章列表失败', 'error') }
 }
 const handleCreateKB = async () => {
   try { await createKnowledgeBase(newKB.value); showKBDialog.value = false; newKB.value = { name: '', description: '' }; await fetchKBs() } catch (e: any) { alert(e?.message || '创建失败') }
@@ -153,20 +153,8 @@ const handleRetryDocument = async (id: number) => {
   try { await retryDocument(selectedKB.value.id, id); await fetchArticles() } catch (e: any) { alert(e?.message) }
 }
 
-// v2 辅助函数
+// v2 辅助函数；statusClass/statusText/processClass/processText → @/utils/knowledge.ts
 const sourceIcon = (t: number) => { const m: Record<number,string> = { 1:'✍️',2:'📄' }; return m[t]||'❓' }
-const processClass = (s: number | undefined) => {
-  const m: Record<number,string> = { 1:'pending',2:'pending',3:'pending',4:'completed',5:'failed' }
-  return s !== undefined ? (m[s]||'') : ''
-}
-const processText = (s: number | undefined) => {
-  if (s === undefined) return '-'
-  const m: Record<number,string> = { 0:'待处理',1:'解析中',2:'分块中',3:'向量化中',4:'已完成',5:'失败' }
-  return m[s]||'-'
-}
-
-const statusClass = (s: number) => { const m: Record<number,string> = { '-1':'disabled',0:'disabled',1:'draft',2:'pending',3:'approved',4:'published',5:'rejected' }; return m[s]||'' }
-const statusText = (s: number) => { const m: Record<number,string> = { '-1':'已停用',0:'已停用',1:'草稿',2:'待审核',3:'已通过',4:'已发布',5:'已驳回' }; return m[s]||'未知' }
 const formatTime = (t?: string) => t ? new Date(t).toLocaleString('zh-CN') : '-'
 </script>
 

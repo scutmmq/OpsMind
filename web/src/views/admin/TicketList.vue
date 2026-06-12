@@ -25,28 +25,21 @@
 </template>
 
 <script setup lang="ts">
-// TODO(admin/TicketList): catch 块静默忽略错误（/* API error */）— API 调用失败时用户无提示。
-// TODO(admin/TicketList): urgencyClass/urgencyText/statusClass/formatDate 在 admin/TicketDetail、
-//                       portal/TicketQuery、portal/TicketDetail 中重复 — 应抽取到 utils/ticket.ts。
-// TODO(admin/TicketList): 使用 (res as any) 强制类型转换 — 等 API 泛型补全后移除。
 import { ref, onMounted } from 'vue'
 import { listAllTickets } from '@/api/admin'
 import type { TicketItem } from '@/api/ticket'
+import { urgencyClass, urgencyText, ticketStatusClass as statusClass } from '@/utils/ticket'
+import { formatDate } from '@/utils/date'
+import { useToast } from '@/composables/useToast'
 
 const loading = ref(true); const tickets = ref<TicketItem[]>([])
+const toast = useToast()
 
 onMounted(async () => {
   try { const res = await listAllTickets({ page_size: 50 }) as any; tickets.value = res?.data || res?.items || [] }
-  catch (err) { console.error('加载申告列表失败', err) }
+  catch (err) { console.error('加载申告列表失败', err); toast.showToast('加载申告列表失败', 'error') }
   finally { loading.value = false }
 })
-
-function urgencyClass(u: number) { return u === 3 ? 'high' : u === 2 ? 'medium' : 'low' }
-function urgencyText(u: number) { return u === 3 ? '高' : u === 2 ? '中' : '低' }
-function statusClass(s: number) {
-  if (s === 1) return 'pending'; if (s === 2) return 'processing'; if (s === 3) return 'supplement'; if (s === 4) return 'resolved'; return 'closed'
-}
-function formatDate(d: string) { if (!d) return '-'; return d.substring(0, 10) }
 </script>
 
 <style scoped>

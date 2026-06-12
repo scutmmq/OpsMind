@@ -149,7 +149,6 @@
 <script setup lang="ts">
 // TODO(admin/KnowledgeEdit): 组件超过 400 行 — 应拆分为文档上传区域、元信息表单、处理状态展示等子组件。
 // TODO(admin/KnowledgeEdit): fetchArticle/fetchKBs 失败时仅 console.error，无用户可见提示，无 loading 状态。
-// TODO(admin/KnowledgeEdit): processClass/processText/statusClass/statusText 与 KnowledgeList 重复 — 应提取到 utils/knowledge.ts。
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
@@ -157,6 +156,7 @@ import {
   submitReview, reviewArticle, publishArticle, disableArticle, enableArticle,
   uploadDocuments, retryDocument,
 } from '@/api/knowledge'
+import { articleStatusClass as statusClass, articleStatusText as statusText } from '@/utils/knowledge'
 
 const router = useRouter()
 const route = useRoute()
@@ -198,7 +198,7 @@ onMounted(async () => {
 })
 
 const fetchKBs = async () => {
-  try { const res = await listKnowledgeBases(); kbList.value = (res.data as any).items || (res as any).items || [] } catch (e) { console.error(e) }
+  try { const res = await listKnowledgeBases(); kbList.value = (res.data as any).items || (res as any).items || [] } catch (e) { console.error(e); alert('加载知识库列表失败') }
 }
 const fetchArticle = async () => {
   try {
@@ -211,7 +211,7 @@ const fetchArticle = async () => {
       category: res.data.category || '',
       tags: res.data.tags || [],
     }
-  } catch (e) { console.error(e) }
+  } catch (e) { console.error(e); alert('加载文章详情失败') }
 }
 
 const addTag = () => { const t = tagInput.value.trim(); if (t && !form.value.tags.includes(t)) form.value.tags.push(t); tagInput.value = '' }
@@ -314,8 +314,7 @@ function processStatusText(s: number) {
   return m[s] || '未知'
 }
 
-const statusClass = (s: number) => { const m: Record<number,string> = { 0:'disabled',1:'draft',2:'pending',3:'approved',4:'published',5:'rejected' }; return m[s]||'' }
-const statusText = (s: number) => { const m: Record<number,string> = { 0:'已停用',1:'草稿',2:'待审核',3:'已通过',4:'已发布',5:'已驳回' }; return m[s]||'未知' }
+// statusClass/statusText → @/utils/knowledge.ts
 </script>
 
 <style scoped>

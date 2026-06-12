@@ -114,8 +114,6 @@
 </template>
 
 <script setup lang="ts">
-// TODO(portal/TicketSubmit): 缺少表单字段校验 — 手机号无正则格式校验、邮箱无格式校验。
-// TODO(portal/TicketSubmit): 提交失败时使用通用消息"提交失败，请稍后重试"，丢失后端返回的具体错误信息。
 // TODO(portal/TicketSubmit): 组件超过 340 行 — 可提取表单字段组件和验证逻辑。
 import { ref, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -172,6 +170,16 @@ async function handleSubmit() {
     submitError.value = '请填写标题、描述和联系电话'
     return
   }
+  // 手机号格式校验（中国大陆手机号）
+  if (!/^1\d{10}$/.test(form.contact_phone.trim())) {
+    submitError.value = '请输入正确的手机号（11位，以1开头）'
+    return
+  }
+  // 邮箱格式校验（可选字段，填写时校验）
+  if (form.contact_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contact_email.trim())) {
+    submitError.value = '请输入正确的邮箱地址'
+    return
+  }
 
   submitting.value = true
   try {
@@ -188,8 +196,8 @@ async function handleSubmit() {
     submitSuccess.value = true
     // 1.5 秒后跳转到我的申告列表
     setTimeout(() => router.push('/portal/tickets'), 1500)
-  } catch {
-    submitError.value = '提交失败，请稍后重试'
+  } catch (e: any) {
+    submitError.value = e?.message || '提交失败，请稍后重试'
     submitting.value = false
   }
 }

@@ -94,11 +94,12 @@
 
 <script setup lang="ts">
 // TODO(portal/TicketDetail): API 调用失败时静默置 null，无用户可见错误提示。
-// TODO(portal/TicketDetail): urgencyText 函数在 4 个文件中重复定义 — 应提取到 utils/ticket.ts。
 // TODO(portal/TicketDetail): 使用 (res as any) / (res?.data || res) 解包 — 等 API 泛型补全后统一。
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getTicketDetail, supplementTicket, type TicketDetail } from '@/api/ticket'
+import { urgencyText, scopeText as impactText, actionText } from '@/utils/ticket'
+import { formatDate } from '@/utils/date'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 
 const route = useRoute()
@@ -142,31 +143,7 @@ async function handleSupplement() {
   }
 }
 
-function urgencyText(v: number): string {
-  const map: Record<number, string> = { 1: '低', 2: '中', 3: '高' }
-  return map[v] || '未知'
-}
-
-function impactText(v: number): string {
-  const map: Record<number, string> = { 1: '个人', 2: '部门', 3: '全公司' }
-  return map[v] || '未知'
-}
-
-function actionText(action: string): string {
-  const map: Record<string, string> = {
-    create: '创建申告', start: '开始处理', request_info: '请求补充信息',
-    supplement: '补充信息', resolve: '已解决', close: '已关闭',
-  }
-  return map[action] || action
-}
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleDateString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
+// urgencyText/impactText/actionText → @/utils/ticket.ts / formatDate → @/utils/date.ts
 </script>
 
 <style scoped>

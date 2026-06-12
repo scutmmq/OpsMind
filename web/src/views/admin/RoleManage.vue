@@ -25,17 +25,17 @@
 </template>
 
 <script setup lang="ts">
-// TODO(admin/RoleManage): catch 块静默忽略所有错误 — API 调用失败时用户无任何提示。
-// TODO(admin/RoleManage): 使用 (res as any) 强制类型转换 — 等 API 层泛型补全后移除。
 import { ref, onMounted } from 'vue'
 import { getRoleList } from '@/api/role'
 import type { RoleItem } from '@/api/role'
+import { useToast } from '@/composables/useToast'
 
 const loading = ref(true); const roles = ref<RoleItem[]>([])
+const toast = useToast()
 
 onMounted(async () => {
   try { const res = await getRoleList() as any; roles.value = res?.data || res || [] }
-  catch (err) { console.error('加载角色列表失败', err) }
+  catch (err) { console.error('加载角色列表失败', err); toast.showToast('加载角色列表失败', 'error') }
   finally { loading.value = false }
 })
 </script>

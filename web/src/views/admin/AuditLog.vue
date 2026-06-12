@@ -25,19 +25,22 @@
 </template>
 
 <script setup lang="ts">
-// TODO(admin/AuditLog): 缺少用户可见的错误提示 — 加载失败时仅 console.error，用户无感知。
-// TODO(admin/AuditLog): 使用 (res as any) 绕过类型检查 — 应使用审计日志 API 模块的泛型声明。
 // TODO(admin/AuditLog): page 和 page_size 硬编码 — 应支持分页参数。
 import { ref, onMounted } from 'vue'
 import { listAuditLogs, type AuditLogItem } from '@/api/audit'
+import { useToast } from '@/composables/useToast'
 
 const loading = ref(true); const logs = ref<AuditLogItem[]>([])
+const toast = useToast()
 
 onMounted(async () => {
   try {
     const res = await listAuditLogs({ page: 1, page_size: 100 })
     logs.value = res.data?.items || []
-  } catch (err) { console.error('加载审计日志失败', err) }
+  } catch (err) {
+    console.error('加载审计日志失败', err)
+    toast.showToast('加载审计日志失败', 'error')
+  }
   finally { loading.value = false }
 })
 

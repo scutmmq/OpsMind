@@ -70,13 +70,12 @@
 </template>
 
 <script setup lang="ts">
-// TODO(admin/TicketDetail): urgencyText/statusClass/scopeText 等辅助函数在多个视图中重复 —
-//                         应提取到 utils/ticket.ts 共享。
 // TODO(admin/TicketDetail): 使用 (res as any) 强制类型转换 — 等 API 泛型补全后移除。
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getTicketDetail, updateTicketStatus } from '@/api/admin'
 import type { TicketDetail } from '@/api/ticket'
+import { urgencyText, ticketStatusClass as statusClass, scopeText, actionText } from '@/utils/ticket'
 import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
@@ -106,12 +105,7 @@ async function doAction(action: string) {
   finally { saving.value = false }
 }
 
-function statusClass(s: number) {
-  if (s === 1) return 'pending'; if (s === 2) return 'processing'; if (s === 3) return 'supplement'; if (s === 4) return 'resolved'; return 'closed'
-}
-function urgencyText(u: number) { return u === 3 ? '高' : u === 2 ? '中' : '低' }
-function scopeText(s: number) { return s === 3 ? '全公司' : s === 2 ? '部门' : '个人' }
-function actionText(a: string) { const m: Record<string, string> = { start: '接单', resolve: '已解决', request_info: '需补充信息', close: '关闭', remark: '备注', supplement: '用户补充' }; return m[a] || a }
+// statusClass/urgencyText/scopeText/actionText → @/utils/ticket.ts
 </script>
 
 <style scoped>

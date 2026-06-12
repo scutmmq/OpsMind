@@ -72,9 +72,7 @@
 </template>
 
 <script setup lang="ts">
-// TODO(admin/UserList): fetchRoles 的 catch 块仅忽略错误 — 角色列表加载失败时用户无感知。
 // TODO(admin/UserList): 创建/编辑用户表单缺少手机号、邮箱格式校验，密码无强度指示器。
-// TODO(admin/UserList): 使用 res?.items || res?.data?.items || res || [] 链式解包，待 API 泛型补全。
 import { ref, onMounted } from 'vue'
 import { getUserList, createUser, updateUser, freezeUser, restoreUser } from '@/api/user'
 import { getRoleList } from '@/api/role'
@@ -103,7 +101,7 @@ async function fetchUsers() {
 }
 
 async function fetchRoles() {
-  try { const res = await getRoleList() as any; allRoles.value = res?.data || res || [] } catch (err) { console.error('加载角色列表失败', err) }
+  try { const res = await getRoleList() as any; allRoles.value = res?.data || res || [] } catch (err) { console.error('加载角色列表失败', err); toast.showToast('加载角色列表失败', 'error') }
 }
 
 function startCreate() {

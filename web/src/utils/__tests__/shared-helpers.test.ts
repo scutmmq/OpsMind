@@ -1,67 +1,115 @@
 /**
- * 共享工具函数测试 — P2-11
+ * 共享工具函数测试
  *
- * 这些函数将从各视图提取到独立的工具模块中。
- * 运行前：所有 import 将失败（文件不存在）。
- * 实现后：测试验证所有提取的函数行为一致。
+ * 验证从各视图提取到 utils/ 模块的函数行为一致。
  */
 import { describe, it, expect } from 'vitest'
-import { urgencyText, ticketStatusClass } from '@/utils/ticket'
-import { knowledgeStatusText, knowledgeStatusClass, processText, processClass } from '@/utils/knowledge'
-import { formatDate } from '@/utils/format'
+import { urgencyText, urgencyClass, ticketStatusClass, scopeText, actionText } from '@/utils/ticket'
+import { articleStatusText, articleStatusClass, processText, processClass } from '@/utils/knowledge'
+import { formatDate } from '@/utils/date'
 
-describe('urgencyText (utils/ticket.ts)', () => {
-  it('urgency=1 返回"低"', () => { expect(urgencyText(1)).toBe('低') })
-  it('urgency=2 返回"中"', () => { expect(urgencyText(2)).toBe('中') })
-  it('urgency=3 返回"高"', () => { expect(urgencyText(3)).toBe('高') })
+// ═══════════════════════════════════════════════════════════════
+// ticket.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('urgencyText', () => {
+  it('1→低, 2→中, 3→高', () => {
+    expect(urgencyText(1)).toBe('低')
+    expect(urgencyText(2)).toBe('中')
+    expect(urgencyText(3)).toBe('高')
+  })
   it('未知值返回"未知"', () => { expect(urgencyText(99)).toBe('未知') })
-  it('零值返回"未知"', () => { expect(urgencyText(0)).toBe('未知') })
 })
 
-describe('ticketStatusClass (utils/ticket.ts)', () => {
-  it('status=0 返回 status-pending', () => { expect(ticketStatusClass(0)).toBe('status-pending') })
-  it('status=1 返回 status-processing', () => { expect(ticketStatusClass(1)).toBe('status-processing') })
-  it('status=3 返回 status-resolved', () => { expect(ticketStatusClass(3)).toBe('status-resolved') })
-  it('未知值返回空字符串', () => { expect(ticketStatusClass(99)).toBe('') })
-})
-
-describe('knowledgeStatusText (utils/knowledge.ts)', () => {
-  it('status=0 返回"草稿"', () => { expect(knowledgeStatusText(0)).toBe('草稿') })
-  it('status=1 返回"待审核"', () => { expect(knowledgeStatusText(1)).toBe('待审核') })
-  it('status=2 返回"已发布"', () => { expect(knowledgeStatusText(2)).toBe('已发布') })
-  it('status=3 返回"已禁用"', () => { expect(knowledgeStatusText(3)).toBe('已禁用') })
-})
-
-describe('knowledgeStatusClass (utils/knowledge.ts)', () => {
-  it('各状态映射正确', () => {
-    expect(knowledgeStatusClass(0)).toBe('status-draft')
-    expect(knowledgeStatusClass(2)).toBe('status-published')
-    expect(knowledgeStatusClass(3)).toBe('status-disabled')
+describe('urgencyClass', () => {
+  it('3→high, 2→medium, 其他→low', () => {
+    expect(urgencyClass(3)).toBe('high')
+    expect(urgencyClass(2)).toBe('medium')
+    expect(urgencyClass(1)).toBe('low')
   })
 })
 
-describe('processText (utils/knowledge.ts)', () => {
-  it('status=0 返回"待处理"', () => { expect(processText(0)).toBe('待处理') })
-  it('status=2 返回"已完成"', () => { expect(processText(2)).toBe('已完成') })
-  it('status=3 返回"失败"', () => { expect(processText(3)).toBe('失败') })
-})
-
-describe('processClass (utils/knowledge.ts)', () => {
-  it('各处理状态映射正确', () => {
-    expect(processClass(1)).toBe('process-processing')
-    expect(processClass(2)).toBe('process-done')
-    expect(processClass(3)).toBe('process-failed')
+describe('ticketStatusClass', () => {
+  it('v2 状态映射', () => {
+    expect(ticketStatusClass(1)).toBe('pending')
+    expect(ticketStatusClass(2)).toBe('processing')
+    expect(ticketStatusClass(3)).toBe('supplement')
+    expect(ticketStatusClass(4)).toBe('resolved')
+    expect(ticketStatusClass(5)).toBe('closed')
   })
 })
 
-describe('formatDate (utils/format.ts)', () => {
+describe('scopeText', () => {
+  it('1→个人, 2→部门, 3→全公司', () => {
+    expect(scopeText(1)).toBe('个人')
+    expect(scopeText(2)).toBe('部门')
+    expect(scopeText(3)).toBe('全公司')
+  })
+})
+
+describe('actionText', () => {
+  it('已定义操作映射', () => {
+    expect(actionText('start')).toBe('开始处理')
+    expect(actionText('resolve')).toBe('已解决')
+    expect(actionText('close')).toBe('关闭')
+  })
+  it('未知操作返回原值', () => { expect(actionText('unknown_action')).toBe('unknown_action') })
+})
+
+// ═══════════════════════════════════════════════════════════════
+// knowledge.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('articleStatusText', () => {
+  it('v2 状态映射 (0-5)', () => {
+    expect(articleStatusText(0)).toBe('已停用')
+    expect(articleStatusText(1)).toBe('草稿')
+    expect(articleStatusText(2)).toBe('待审核')
+    expect(articleStatusText(3)).toBe('已通过')
+    expect(articleStatusText(4)).toBe('已发布')
+    expect(articleStatusText(5)).toBe('已驳回')
+  })
+})
+
+describe('articleStatusClass', () => {
+  it('v2 CSS 类映射', () => {
+    expect(articleStatusClass(1)).toBe('draft')
+    expect(articleStatusClass(2)).toBe('pending')
+    expect(articleStatusClass(4)).toBe('published')
+    expect(articleStatusClass(5)).toBe('rejected')
+  })
+})
+
+describe('processText', () => {
+  it('undefined→"-"', () => { expect(processText(undefined)).toBe('-') })
+  it('0→待处理, 4→已完成, 5→失败', () => {
+    expect(processText(0)).toBe('待处理')
+    expect(processText(4)).toBe('已完成')
+    expect(processText(5)).toBe('失败')
+  })
+})
+
+describe('processClass', () => {
+  it('undefined→""', () => { expect(processClass(undefined)).toBe('') })
+  it('1→pending, 4→completed, 5→failed', () => {
+    expect(processClass(1)).toBe('pending')
+    expect(processClass(4)).toBe('completed')
+    expect(processClass(5)).toBe('failed')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════
+// date.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('formatDate', () => {
   it('空字符串返回"-"', () => { expect(formatDate('')).toBe('-') })
   it('有效日期返回格式化字符串', () => {
     const result = formatDate('2026-01-15T10:30:00Z')
     expect(result).toContain('2026')
     expect(result).toContain('01')
   })
-  it('不抛出异常', () => {
+  it('无效日期不抛出异常', () => {
     expect(() => formatDate('invalid-date')).not.toThrow()
   })
 })

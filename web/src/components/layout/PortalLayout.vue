@@ -42,19 +42,19 @@
 </template>
 
 <script setup lang="ts">
-// TODO(layout/PortalLayout): catch 块静默失败 — getUnreadCount 调用失败时用户界面无任何提示。
-// TODO(layout/PortalLayout): 使用 (res as any) 强制类型转换 — 待 API 层泛型补全后移除。
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NLayout, NLayoutHeader, NLayoutContent, NButton, NIcon, NBadge } from 'naive-ui'
 import { SunnyOutline, MoonOutline } from '@vicons/ionicons5'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme } from '@/composables/useTheme'
+import { useToast } from '@/composables/useToast'
 import { getUnreadCount } from '@/api/message'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const { toggleTheme, isDark } = useTheme()
+const toast = useToast()
 const unreadCount = ref(0)
 
 onMounted(async () => {
@@ -64,6 +64,7 @@ onMounted(async () => {
     unreadCount.value = data?.count ?? data ?? 0
   } catch (err) {
     console.error('获取未读消息数失败', err)
+    toast.showToast('消息计数加载失败', 'error')
   }
 })
 
