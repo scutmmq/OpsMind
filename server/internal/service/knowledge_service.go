@@ -287,7 +287,7 @@ func (s *KnowledgeService) Publish(id int64, publisherID int64) error {
 			Content:         chunk,
 			ChunkIndex:      i,
 			Embedding:       vectors[i],
-			EmbeddingModel:  "bge-m3", // TODO: 模型名硬编码，应从知识库或系统配置读取 embedding_model
+			EmbeddingModel:  article.KnowledgeBase.EmbeddingModel, // 从知识库配置读取
 			VectorDimension: dimension,
 		}
 	}
@@ -319,11 +319,7 @@ func (s *KnowledgeService) Disable(id int64) error {
 		}
 	}
 
-	// TODO: article.Status = 0 与 model.ArticleStatusDisabled (4) 不一致。
-	// 枚举常量 ArticleStatusDisabled=4 从未被使用；statusText(0) 恰好返回 "已停用"，
-	// 但若其他代码检查 article.Status == model.ArticleStatusDisabled 则会漏掉实际值为 0 的记录。
-	// 应改为 article.Status = model.ArticleStatusDisabled，并统一所有状态枚举的使用。
-	article.Status = 0
+	article.Status = model.ArticleStatusDisabled
 	return s.repo.UpdateArticle(article)
 }
 
@@ -336,8 +332,7 @@ func (s *KnowledgeService) Enable(id int64) error {
 		}
 		return err
 	}
-	// TODO: 应与 Disable 同步改为 model.ArticleStatusDisabled
-	if article.Status != 0 {
+	if article.Status != model.ArticleStatusDisabled {
 		return errcode.AppError{Code: errcode.ErrParam, Message: "仅已停用状态的文章可恢复"}
 	}
 	article.Status = 1 // 已停用 → 草稿

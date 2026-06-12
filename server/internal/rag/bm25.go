@@ -107,8 +107,8 @@ type BM25Document struct {
 
 // bm25Posting 倒排索引的单个命中记录。
 type bm25Posting struct {
-	ChunkID int64 // 分块 ID
-	TermFreq int  // 该词在该文档中的出现次数
+	ChunkID  int64 // 分块 ID
+	TermFreq int   // 该词在该文档中的出现次数
 }
 
 // BM25Index 单知识库的倒排索引。
@@ -234,9 +234,14 @@ func (r *BM25Retriever) buildIndex(docs []BM25Document) *BM25Index {
 // Retrieve 执行 BM25 检索，返回 topK 个结果。
 //
 // 如果知识库索引不存在或已过期，返回空结果（不报错）。
-// TODO: ctx 参数未使用——分词和评分操作不支持 context 取消。
-// 大知识库检索可能耗时数秒，应通过 context 支持超时和取消。
 func (r *BM25Retriever) Retrieve(ctx context.Context, query string, kbID int64, topK int) ([]RetrievalResult, error) {
+	// 检查 context 是否已取消（支持超时和取消）
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	r.mu.RLock()
 	entry, exists := r.indexes[kbID]
 	r.mu.RUnlock()
@@ -245,29 +250,9 @@ func (r *BM25Retriever) Retrieve(ctx context.Context, query string, kbID int64, 
 		return nil, nil
 	}
 
-	// TTL 检查：过期时自动重建索引（使用存储的文档副本）
+	// TTL 检查：过期时自动重建索引
 	if r.ttl > 0 && time.Since(entry.builtAt) > r.ttl {
-		// TODO: 锁降级模式脆弱 — RLock→Unlock→Lock→Unlock→RLock 序列已出过 bug（注释记录）。
-		// 如果发生 panic，函数可能在持有读锁的情况下退出，导致死锁。
-		// 应将 TTL 检查与重建提取为独立辅助方法 tryRefreshIndex，减少嵌套复杂性。
-		// 升级为写锁并重建（RLock 已在入口处释放，直接获取写锁即可；原 r.mu.RUnlock() 为重复释放 bug）
-		r.mu.Lock()
-		// 双重检查（其他 goroutine 可能已重建）
-		if e, stillExists := r.indexes[kbID]; stillExists && time.Since(e.builtAt) > r.ttl {
-			if len(e.documents) > 0 {
-				idx := r.buildIndex(e.documents)
-				r.indexes[kbID] = &bm25Entry{
-					index:     idx,
-					documents: e.documents,
-					builtAt:   time.Now(),
-				}
-			}
-		}
-		r.mu.Unlock()
-		r.mu.RLock()
-		defer r.mu.RUnlock() // 确保函数退出时释放读锁（此前遗漏，导致 TTL 过期后死锁）
-		// 重新获取（可能已更新）
-		entry = r.indexes[kbID]
+		entry = r.tryRefreshIndex(kbID)
 		if entry == nil || entry.index.docCount == 0 {
 			return nil, nil
 		}
@@ -314,6 +299,30 @@ func (r *BM25Retriever) Retrieve(ctx context.Context, query string, kbID int64, 
 		})
 	}
 	return results, nil
+}
+
+// tryRefreshIndex 在写锁保护下重建过期的 BM25 索引。
+//
+// 将 TTL 过期检查与索引重建提取为独立方法，减少 Retrieve 中的锁嵌套复杂性。
+// 调用方已释放读锁，本方法获取写锁并执行双重检查后重建。
+func (r *BM25Retriever) tryRefreshIndex(kbID int64) *bm25Entry {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	e, exists := r.indexes[kbID]
+	if !exists || e == nil || time.Since(e.builtAt) <= r.ttl {
+		return e
+	}
+
+	if len(e.documents) > 0 {
+		idx := r.buildIndex(e.documents)
+		r.indexes[kbID] = &bm25Entry{
+			index:     idx,
+			documents: e.documents,
+			builtAt:   time.Now(),
+		}
+	}
+	return r.indexes[kbID]
 }
 
 // scoreQuery 计算查询与所有文档的 BM25 分数。

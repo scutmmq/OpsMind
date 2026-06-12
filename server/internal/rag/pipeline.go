@@ -195,10 +195,12 @@ func (p *Pipeline) Execute(ctx context.Context, query string, kbID int64, opts R
 		})
 	}
 
+	// 校验 RerankCount >= TopK，否则重排序候选池小于目标数
+	if opts.Rerank && opts.RerankCount < opts.TopK {
+		opts.RerankCount = opts.TopK * 3
+	}
+
 	// 截取 TopK
-	//
-	// TODO: 应校验 RerankCount >= TopK，否则重排序候选池小于目标数，
-	// 重排序后截断 TopK 形同虚设（候选池本身不足）。
 	if len(allChunks) > opts.TopK {
 		allChunks = allChunks[:opts.TopK]
 	}

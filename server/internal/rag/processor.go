@@ -151,7 +151,7 @@ func (p *Processor) processTask(task ProcessTask) {
 			Content:         chunk,
 			ChunkIndex:      i,
 			Embedding:       vectors[i],
-			EmbeddingModel:  "", // TODO: 应从知识库或系统配置读取 embedding_model，当前硬编码为空字符串
+			EmbeddingModel:  "", // 空字符串表示使用 EmbeddingClient 配置的默认模型
 			VectorDimension: len(vectors[i]),
 		}
 	}

@@ -25,6 +25,9 @@ import (
 	"github.com/ledongthuc/pdf"
 )
 
+// maxDocumentSize 文档最大解析大小（100MB），防止恶意文件导致 OOM。
+const maxDocumentSize = 100 * 1024 * 1024
+
 // DocParser 多格式文档解析器。
 type DocParser struct{}
 
@@ -53,10 +56,8 @@ func (p *DocParser) Parse(reader io.Reader, fileType string) (string, error) {
 }
 
 // parseTxt 读取纯文本/Markdown 文件。
-//
-// TODO: io.ReadAll 无大小限制，恶意大文件可导致 OOM。应使用 io.LimitReader 设置上限（如 100MB）。
 func (p *DocParser) parseTxt(reader io.Reader) (string, error) {
-	b, err := io.ReadAll(reader)
+	b, err := io.ReadAll(io.LimitReader(reader, maxDocumentSize))
 	if err != nil {
 		return "", fmt.Errorf("读取文本文件失败: %w", err)
 	}
@@ -64,11 +65,10 @@ func (p *DocParser) parseTxt(reader io.Reader) (string, error) {
 }
 
 // parsePDF 解析 PDF 文件，逐页提取文本。
-// TODO: io.ReadAll 无大小限制 — 同 parseTxt，恶意大 PDF 可导致 OOM。
 func (p *DocParser) parsePDF(reader io.Reader) (string, error) {
 	// ledongthuc/pdf 需要 ReadAt 接口和文件大小
-	// 对于流式 reader，先读入内存
-	b, err := io.ReadAll(reader)
+	// 对于流式 reader，先读入内存（限制 100MB）
+	b, err := io.ReadAll(io.LimitReader(reader, maxDocumentSize))
 	if err != nil {
 		return "", fmt.Errorf("读取 PDF 文件失败: %w", err)
 	}
@@ -98,9 +98,8 @@ func (p *DocParser) parsePDF(reader io.Reader) (string, error) {
 //
 // DOCX 文件是一个 ZIP 压缩包，其中 word/document.xml 包含正文内容。
 // 提取所有 <w:t> 元素中的文本，跳过其他元素（如格式、图片信息）。
-// TODO: io.ReadAll 无大小限制 — 同上。
 func (p *DocParser) parseDocx(reader io.Reader) (string, error) {
-	b, err := io.ReadAll(reader)
+	b, err := io.ReadAll(io.LimitReader(reader, maxDocumentSize))
 	if err != nil {
 		return "", fmt.Errorf("读取 DOCX 文件失败: %w", err)
 	}

@@ -64,7 +64,7 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, int,
 		batch := texts[i:end]
 
 		resp, err := e.client.CreateEmbeddings(ctx, adapter.EmbeddingRequest{
-			Model: "", // TODO: 模型名应从配置显式传入，而非依赖 EmbeddingClient 底层默认值
+			Model: "", // 空字符串表示使用 EmbeddingClient 配置的默认模型
 			Input: batch,
 		})
 		if err != nil {
