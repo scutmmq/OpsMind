@@ -6,6 +6,7 @@ package service
 import (
 	"errors"
 	"context"
+	"log/slog"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -503,10 +504,8 @@ func (s *KnowledgeService) RetryDocument(articleID int64) error {
 		return errcode.AppError{Code: errcode.ErrUnknown, Message: "文档处理器未初始化"}
 	}
 
-	// TODO: UpdateArticleStatus 错误被静默丢弃。至少应记录日志。
 	if err := s.repo.UpdateArticleStatus(articleID, 1); err != nil {
-		// 状态更新失败仅记录，不阻断主流程
-		_ = err
+		slog.Warn("更新文章状态失败，不阻断主流程", "article_id", articleID, "error", err)
 	}
 	task := rag.ProcessTask{
 		ArticleID: articleID,

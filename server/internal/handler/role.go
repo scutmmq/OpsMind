@@ -72,7 +72,6 @@ func (h *RoleHandler) List(c *gin.Context) {
 
 	roles, total, err := h.svc.List(page, pageSize)
 	if err != nil {
-		// TODO: err.Error() 泄露内部错误 — 应使用 handleServiceError(c, err)。
 		handleServiceError(c, err)
 		return
 	}

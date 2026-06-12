@@ -129,16 +129,11 @@ func (s *ChatService) CreateChatSession(req request.CreateChatRequest, userID in
 		canSubmit = true
 	} else if s.llmClient != nil {
 		// Step 2: 构造带上下文的 prompt
-		// TODO: system prompt 硬编码，不同知识库可能需要不同角色设定（如「网络运维」「DBA」）。
-		// 应在知识库或 LLM 配置中支持 prompt_template 字段。
+		// 注意：system prompt 当前为全局默认值。后续可在知识库或 LLM 配置中
+		// 增加 prompt_template 字段，支持按知识库定制角色设定。
 		systemPrompt := "你是一个运维知识助手。根据以下知识库内容回答用户问题。如果知识库中没有相关信息，请如实说明。"
 		var contextBuilder strings.Builder
-		// TODO: 仅取前 3 个 chunk 注入 LLM，而检索返回 TopK=5，浪费了后 2 个结果。
-		// 应改为可配置的 context_chunk_count 或全部使用 TopK 的结果。
 		for i, chunk := range pipelineChunks {
-			if i >= 3 {
-				break
-			}
 			contextBuilder.WriteString(fmt.Sprintf("【参考资料 %d】%s\n", i+1, chunk.Content))
 		}
 

@@ -80,7 +80,6 @@ func (h *UserHandler) List(c *gin.Context) {
 
 	result, err := h.svc.List(page, pageSize, keyword)
 	if err != nil {
-		// TODO: err.Error() 直接将内部错误信息泄露到 HTTP 响应 — 应使用 handleServiceError(c, err)。
 		handleServiceError(c, err)
 		return
 	}

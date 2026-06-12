@@ -59,7 +59,6 @@ func NewLLMConfigHandler(svc llmConfigService, llmClient adapter.LLMClient) *LLM
 func (h *LLMConfigHandler) ListConfigs(c *gin.Context) {
 	configs, err := h.svc.ListConfigs()
 	if err != nil {
-		// TODO: err.Error() 泄露内部错误 — 应使用 handleServiceError(c, err)。
 		handleServiceError(c, err)
 		return
 	}

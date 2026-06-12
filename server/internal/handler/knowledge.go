@@ -85,7 +85,6 @@ func (h *KnowledgeHandler) UpdateKB(c *gin.Context) {
 func (h *KnowledgeHandler) ListKBs(c *gin.Context) {
 	kbs, err := h.svc.ListKBs()
 	if err != nil {
-		// TODO: err.Error() 泄露内部错误 — 应使用 handleServiceError(c, err)。
 		handleServiceError(c, err)
 		return
 	}

@@ -37,7 +37,6 @@ func (h *AuditHandler) List(c *gin.Context) {
 
 	items, total, err := h.svc.List(req.OperatorID, req.Action, page, pageSize)
 	if err != nil {
-		// TODO: err.Error() 泄露内部错误 — 应使用 handleServiceError(c, err)。
 		handleServiceError(c, err)
 		return
 	}
