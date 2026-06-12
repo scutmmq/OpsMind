@@ -428,7 +428,21 @@ func (s *KnowledgeService) GetArticleDetail(id int64) (*response.ArticleDetailRe
 // =============================================================================
 
 // UploadDocuments 上传文档到知识库（解析→创建文章→入队异步处理）。
-func (s *KnowledgeService) UploadDocuments(kbID int64, userID int64, filename string, fileType string, content io.Reader) (*model.KnowledgeArticle, error) {
+//
+// fileSize 用于大小上限校验（最大 50MB），fileType 用于格式白名单校验。
+func (s *KnowledgeService) UploadDocuments(kbID int64, userID int64, filename string, fileType string, fileSize int64, content io.Reader) (*model.KnowledgeArticle, error) {
+	// 格式白名单校验
+	allowedTypes := map[string]bool{"pdf": true, "docx": true, "md": true, "txt": true}
+	if !allowedTypes[fileType] {
+		return nil, errcode.AppError{Code: errcode.ErrParam, Message: "不支持的文件格式: " + fileType + "（支持: pdf/docx/md/txt）"}
+	}
+
+	// 文件大小上限校验
+	const maxSize = 50 * 1024 * 1024
+	if fileSize > maxSize {
+		return nil, errcode.AppError{Code: errcode.ErrParam, Message: "文件大小超过限制（最大 50MB）"}
+	}
+
 	if s.docParser == nil {
 		return nil, errcode.AppError{Code: errcode.ErrUnknown, Message: "文档解析器未初始化"}
 	}

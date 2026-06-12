@@ -33,7 +33,6 @@ func TestAutoMigrate_AllTablesCreated(t *testing.T) {
 		"knowledge_bases",
 		"knowledge_articles",
 		"knowledge_chunks",
-		"embedding_configs",
 		"chat_sessions",
 		"chat_messages",
 		"audit_logs",

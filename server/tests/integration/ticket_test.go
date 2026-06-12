@@ -426,11 +426,11 @@ func TestTicketIntegration_AutoClose(t *testing.T) {
 	require.NoError(t, env.db.Create(newTicket).Error)
 
 	// 3. 执行自动关闭（通过 service 的 AutoCloseTickets 逻辑）
-	closedCount, err := env.repo.AutoCloseTickets(time.Now().Add(-7 * 24 * time.Hour))
+	ids, err := env.repo.AutoCloseTickets(time.Now().Add(-7 * 24 * time.Hour))
 	require.NoError(t, err)
 
-	assert.Equal(t, int64(1), closedCount, "应关闭 1 个过期申告（仅 8 天前的）")
-	t.Logf("✅ 自动关闭: %d 个申告被关闭", closedCount)
+	assert.Equal(t, 1, len(ids), "应关闭 1 个过期申告（仅 8 天前的）")
+	t.Logf("✅ 自动关闭: %d 个申告被关闭", len(ids))
 
 	// 4. 验证旧申告状态变为已关闭(5)
 	var checkOld model.Ticket

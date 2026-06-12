@@ -93,14 +93,16 @@ func main() {
 	chatRepo := repository.NewChatRepo(db)
 	messageRepo := repository.NewMessageRepo(db)
 	auditRepo := repository.NewAuditRepo(db)
+	dashboardRepo := repository.NewDashboardRepo(db)
 
 	// 6. 初始化 Service 层
+	txManager := service.NewGormTxManager(db)
 	authService := service.NewAuthService(userRepo, db)
 	userService := service.NewUserService(userRepo, db)
 	roleService := service.NewRoleService(roleRepo, userRepo, db)
-	ticketService := service.NewTicketService(ticketRepo, db)
+	ticketService := service.NewTicketService(ticketRepo, txManager)
 	messageService := service.NewMessageService(messageRepo)
-	dashboardService := service.NewDashboardService(db)
+	dashboardService := service.NewDashboardService(dashboardRepo)
 	configService := service.NewConfigService(configRepo)
 
 	// LLM 配置管理
@@ -137,7 +139,7 @@ func main() {
 	llmConfigHandler := handler.NewLLMConfigHandler(llmConfigSvc, llmClient)
 
 	// 8. 初始化后台调度器
-	scheduler := service.NewScheduler(ticketRepo)
+	scheduler := service.NewScheduler(ticketService)
 	slog.Info("后台调度器已创建")
 
 	// 9. 设置路由

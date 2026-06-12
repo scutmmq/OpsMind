@@ -52,7 +52,6 @@ func setupKnowledgeService(t *testing.T) *service.KnowledgeService {
 	knowledgeSvcDB.Exec("DELETE FROM knowledge_chunks")
 	knowledgeSvcDB.Exec("DELETE FROM knowledge_articles")
 	knowledgeSvcDB.Exec("DELETE FROM knowledge_bases")
-	knowledgeSvcDB.Exec("DELETE FROM embedding_configs")
 
 	return svc
 }

@@ -150,60 +150,37 @@ func (r *TicketRepo) ListAll(status int, urgency int, page, pageSize int) ([]mod
 	return tickets, total, nil
 }
 
-// AutoCloseTickets 批量关闭超过指定时间的申告，返回关闭数量。
+// AutoCloseTickets 批量关闭超期申告并返回被关闭的 ticket ID 列表。
 //
-// 关闭条件：status IN (1,2,3) AND created_at < olderThan。
-// 使用 model 枚举常量替代魔数，并为每个关闭的 ticket 创建 TicketRecord。
-// 所有操作在事务中执行，保证状态变更与 timeline 记录的一致性。
-func (r *TicketRepo) AutoCloseTickets(olderThan time.Time) (int64, error) {
-	var closedIDs []int64
+// 纯数据操作：查询待关闭的 ticket → 批量 UPDATE status=5。
+// 事务编排和 TicketRecord 创建已上移到 TicketService.AutoClose。
+func (r *TicketRepo) AutoCloseTickets(olderThan time.Time) ([]int64, error) {
+	var tickets []model.Ticket
+	if err := r.db.Model(&model.Ticket{}).
+		Where("status IN ? AND created_at < ?",
+			[]int16{model.TicketStatusPending, model.TicketStatusProcessing, model.TicketStatusNeedSupplement},
+			olderThan).
+		Select("id").
+		Find(&tickets).Error; err != nil {
+		return nil, err
+	}
 
-	err := r.db.Transaction(func(tx *gorm.DB) error {
-		// 先查询待关闭的 ticket ID
-		var tickets []model.Ticket
-		if err := tx.Model(&model.Ticket{}).
-			Where("status IN ? AND created_at < ?",
-				[]int16{model.TicketStatusPending, model.TicketStatusProcessing, model.TicketStatusNeedSupplement},
-				olderThan).
-			Select("id").
-			Find(&tickets).Error; err != nil {
-			return err
-		}
+	if len(tickets) == 0 {
+		return nil, nil
+	}
 
-		if len(tickets) == 0 {
-			return nil
-		}
+	ids := make([]int64, len(tickets))
+	for i, t := range tickets {
+		ids[i] = t.ID
+	}
 
-		for _, t := range tickets {
-			closedIDs = append(closedIDs, t.ID)
-		}
+	if err := r.db.Model(&model.Ticket{}).
+		Where("id IN ?", ids).
+		Update("status", model.TicketStatusClosed).Error; err != nil {
+		return nil, err
+	}
 
-		// 批量关闭
-		if err := tx.Model(&model.Ticket{}).
-			Where("id IN ?", closedIDs).
-			Update("status", model.TicketStatusClosed).Error; err != nil {
-			return err
-		}
-
-		// 为每个关闭的 ticket 创建处理记录
-		now := time.Now()
-		for _, id := range closedIDs {
-			record := &model.TicketRecord{
-				TicketID:   id,
-				OperatorID: 0, // 0 表示系统自动操作
-				Action:     "auto_close",
-				Content:    "系统自动关闭：申告超过 7 天未处理",
-				CreatedAt:  now,
-			}
-			if err := tx.Create(record).Error; err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-
-	return int64(len(closedIDs)), err
+	return ids, nil
 }
 
 // =============================================================================

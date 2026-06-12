@@ -315,25 +315,10 @@ func (h *KnowledgeHandler) UploadDocuments(c *gin.Context) {
 		return
 	}
 
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	allowedTypes := map[string]bool{
-		".pdf": true, ".docx": true, ".md": true, ".txt": true,
-	}
-	if !allowedTypes[ext] {
-		response.Error(c, errcode.ErrParam, "不支持的文件格式: "+ext+"（支持: pdf/docx/md/txt）")
-		return
-	}
-	fileType := strings.TrimPrefix(ext, ".")
-
-	const maxSize = 50 * 1024 * 1024
-	if file.Size > maxSize {
-		response.Error(c, errcode.ErrParam, "文件大小超过限制（最大 50MB）")
-		return
-	}
+	fileType := strings.TrimPrefix(strings.ToLower(filepath.Ext(file.Filename)), ".")
 
 	src, err := file.Open()
 	if err != nil {
-		// TODO: err.Error() 泄露内部错误 — 应使用 handleServiceError(c, err)。
 		handleServiceError(c, err)
 		return
 	}
@@ -341,7 +326,8 @@ func (h *KnowledgeHandler) UploadDocuments(c *gin.Context) {
 
 	userID, _ := getCurrentUserID(c)
 
-	article, err := h.svc.UploadDocuments(kbID, userID, file.Filename, fileType, src)
+	// 文件格式和大小校验在 Service 层完成
+	article, err := h.svc.UploadDocuments(kbID, userID, file.Filename, fileType, file.Size, src)
 	if err != nil {
 		handleServiceError(c, err)
 		return

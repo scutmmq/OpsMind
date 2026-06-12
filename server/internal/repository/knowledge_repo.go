@@ -8,7 +8,6 @@ package repository
 
 import (
 	"opsmind/internal/model"
-	"time"
 
 	"gorm.io/gorm"
 )
@@ -142,18 +141,6 @@ func (r *KnowledgeRepo) UpdateArticleStatus(id int64, status int) error {
 // =============================================================================
 // KnowledgeChunk
 // =============================================================================
-
-// CreateChunks 批量创建知识切片。
-//
-// 为什么用 Create 批量而非逐条插入：单条 INSERT 即可完成，
-// GORM 自动将切片参数展开为多行 VALUES。
-func (r *KnowledgeRepo) CreateChunks(chunks []model.KnowledgeChunk) error {
-	if len(chunks) == 0 {
-		return nil
-	}
-	return r.db.Create(&chunks).Error
-}
-
 // FindChunksByArticleID 按文章 ID 查询全部切片。
 //
 // 返回的切片按 ID 升序排列，保证顺序一致。
@@ -169,95 +156,5 @@ func (r *KnowledgeRepo) FindChunksByArticleID(articleID int64) ([]model.Knowledg
 	return chunks, nil
 }
 
-// UpdateChunkSyncStatus 更新指定文章全部切片的同步状态。
-//
-// 为什么按 article_id 批量更新而非逐条：一次 SQL 更新所有切片，
-// 避免 N 次数据库往返。syncError 参数同时更新错误信息。
-// synced_at 字段在成功时记录当前时间，失败时设为 nil。
-func (r *KnowledgeRepo) UpdateChunkSyncStatus(articleID int64, status string, syncError string) error {
-	updates := map[string]interface{}{
-		"sync_status": status,
-		"sync_error":  syncError,
-	}
-	if status == "synced" {
-		now := time.Now()
-		updates["synced_at"] = &now
-	} else {
-		updates["synced_at"] = nil
-	}
-	return r.db.Model(&model.KnowledgeChunk{}).
-		Where("article_id = ?", articleID).
-		Updates(updates).Error
-}
-
-// UpdateChunkStatusByArticleID 批量更新指定文章全部切片的同步状态。
-//
-// 为什么独立于 UpdateChunkSyncStatus：停用操作不需要记录错误信息，
-// 也不需要更新 synced_at，接口更简洁。
-func (r *KnowledgeRepo) UpdateChunkStatusByArticleID(articleID int64, status string) error {
-	return r.db.Model(&model.KnowledgeChunk{}).
-		Where("article_id = ?", articleID).
-		Update("sync_status", status).Error
-}
-
-// =============================================================================
-// EmbeddingConfig
-// TODO: 以下 5 个方法 (CreateEmbeddingConfig / UpdateEmbeddingConfig / ListEmbeddingConfigs /
-// DeleteEmbeddingConfig / GetDefaultEmbeddingConfig) 在 Service 层无调用方，仅测试引用，
-// 属于死代码。若短期内无使用计划应删除。
 // =============================================================================
 
-// CreateEmbeddingConfig 创建 Embedding 配置。
-//
-// 创建后 cfg.ID 会被 GORM 自动填充。
-func (r *KnowledgeRepo) CreateEmbeddingConfig(cfg *model.EmbeddingConfig) error {
-	return r.db.Create(cfg).Error
-}
-
-// UpdateEmbeddingConfig 更新 Embedding 配置全部字段。
-//
-// 为什么用 Save：更新配置时需要覆盖所有字段（包括 model_type、api_endpoint 等改回零值的场景）。
-func (r *KnowledgeRepo) UpdateEmbeddingConfig(cfg *model.EmbeddingConfig) error {
-	return r.db.Save(cfg).Error
-}
-
-// ListEmbeddingConfigs 列出全部 Embedding 配置。
-func (r *KnowledgeRepo) ListEmbeddingConfigs() ([]model.EmbeddingConfig, error) {
-	var configs []model.EmbeddingConfig
-	err := r.db.Order("id ASC").Find(&configs).Error
-	if err != nil {
-		return nil, err
-	}
-	if configs == nil {
-		configs = []model.EmbeddingConfig{}
-	}
-	return configs, nil
-}
-
-// DeleteEmbeddingConfig 删除 Embedding 配置。
-//
-// 按 ID 删除，记录不存在时返回 gorm.ErrRecordNotFound。
-func (r *KnowledgeRepo) DeleteEmbeddingConfig(id int64) error {
-	result := r.db.Delete(&model.EmbeddingConfig{}, id)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
-}
-
-// GetDefaultEmbeddingConfig 获取默认的 Embedding 配置。
-//
-// 查询 is_default=true 的配置，不存在时返回 gorm.ErrRecordNotFound。
-// 为什么查询不到报错而非返回 nil：语义更清晰（调用方立刻知道没有默认配置），
-// 避免在 Service 层重复 nil 检查。
-func (r *KnowledgeRepo) GetDefaultEmbeddingConfig() (*model.EmbeddingConfig, error) {
-	var cfg model.EmbeddingConfig
-	err := r.db.Where("is_default = ?", true).First(&cfg).Error
-	if err != nil {
-		return nil, err
-	}
-	return &cfg, nil
-}

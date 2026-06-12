@@ -26,13 +26,13 @@ import (
 
 // TicketService 申告管理服务。
 type TicketService struct {
-	repo *repository.TicketRepo
-	db   *gorm.DB
+	repo      *repository.TicketRepo
+	txManager TxManager
 }
 
 // NewTicketService 创建 TicketService 实例。
-func NewTicketService(repo *repository.TicketRepo, db *gorm.DB) *TicketService {
-	return &TicketService{repo: repo, db: db}
+func NewTicketService(repo *repository.TicketRepo, txManager TxManager) *TicketService {
+	return &TicketService{repo: repo, txManager: txManager}
 }
 
 // =============================================================================
@@ -217,7 +217,7 @@ func (s *TicketService) UpdateStatus(id int64, operatorID int64, req request.Upd
 
 		// 包裹在事务中：UpdateStatus + CreateRecord 原子执行，
 		// 避免状态已变但无 timeline 记录的数据不一致。
-		return s.db.Transaction(func(tx *gorm.DB) error {
+		return s.txManager.Transaction(func(tx *gorm.DB) error {
 			txRepo := repository.NewTicketRepo(tx)
 			if err := txRepo.UpdateStatus(id, int(newStatus)); err != nil {
 				return err
@@ -399,4 +399,45 @@ func unmarshalTicketTags(data datatypes.JSON) []string {
 		return nil
 	}
 	return result
+}
+
+// =============================================================================
+// AutoClose（定时任务 — Scheduler 调用）
+// =============================================================================
+
+// AutoClose 自动关闭超期申告（由 Scheduler 定时调用）。
+//
+// 业务规则：status IN (1,2,3) AND created_at < olderThan 的申告自动关闭。
+// 在事务中执行：批量关闭 + 为每个 ticket 创建 action=auto_close 的 TicketRecord。
+func (s *TicketService) AutoClose(olderThan time.Time) (int64, error) {
+	ids, err := s.repo.AutoCloseTickets(olderThan)
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	// 在事务中为每个关闭的 ticket 创建处理记录
+	now := time.Now()
+	err = s.txManager.Transaction(func(tx *gorm.DB) error {
+		for _, id := range ids {
+			record := &model.TicketRecord{
+				TicketID:   id,
+				OperatorID: 0, // 0 表示系统自动操作
+				Action:     "auto_close",
+				Content:    "系统自动关闭：申告超过 7 天未处理",
+				CreatedAt:  now,
+			}
+			if err := tx.Create(record).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	return int64(len(ids)), nil
 }

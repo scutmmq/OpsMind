@@ -351,12 +351,12 @@ func TestTicketRepo_AutoCloseTickets(t *testing.T) {
 	requireNoErr(t, db.Create(&recent).Error)
 
 	// 关闭 7 天前的申告
-	closed, err := repo.AutoCloseTickets(time.Now().Add(-7 * 24 * time.Hour))
+	ids, err := repo.AutoCloseTickets(time.Now().Add(-7 * 24 * time.Hour))
 	if err != nil {
 		t.Fatalf("期望无错误, got %v", err)
 	}
-	if closed != 1 {
-		t.Errorf("期望关闭 1 条, got %d", closed)
+	if len(ids) != 1 {
+		t.Errorf("期望关闭 1 条, got %d", len(ids))
 	}
 
 	// 验证旧申告已关闭

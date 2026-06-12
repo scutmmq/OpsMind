@@ -38,25 +38,3 @@ type ReviewRequest struct {
 	Approved      bool   `json:"approved"`       // 是否通过
 	ReviewComment string `json:"review_comment"`  // 审核意见
 }
-
-// CreateEmbeddingConfigRequest 创建 Embedding 配置请求。
-type CreateEmbeddingConfigRequest struct {
-	Name           string `json:"name" binding:"required"`       // 配置名称
-	ModelType      int16  `json:"model_type" binding:"required"` // 模型类型（1=API, 2=本地）
-	APIEndpoint    string `json:"api_endpoint"`                  // API 地址（model_type=1 时必填）
-	APIKey         string `json:"api_key"`                       // API Key
-	LocalPath      string `json:"local_path"`                    // 本地路径（model_type=2 时必填）
-	VectorDimension int   `json:"vector_dimension" binding:"required"` // 向量维度
-	IsDefault      bool   `json:"is_default"`                    // 是否默认
-}
-
-// UpdateEmbeddingConfigRequest 更新 Embedding 配置请求。
-type UpdateEmbeddingConfigRequest struct {
-	Name           string `json:"name" binding:"required"`       // 配置名称
-	ModelType      int16  `json:"model_type" binding:"required"` // 模型类型
-	APIEndpoint    string `json:"api_endpoint"`                  // API 地址
-	APIKey         string `json:"api_key"`                       // API Key
-	LocalPath      string `json:"local_path"`                    // 本地路径
-	VectorDimension int   `json:"vector_dimension" binding:"required"` // 向量维度
-	IsDefault      bool   `json:"is_default"`                    // 是否默认
-}

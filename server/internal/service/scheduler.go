@@ -14,19 +14,22 @@ import (
 	"context"
 	"log/slog"
 	"time"
-
-	"opsmind/internal/repository"
 )
+
+// ticketAutoCloseService Scheduler 需要的 TicketService 方法子集（消费者定义接口）。
+type ticketAutoCloseService interface {
+	AutoClose(olderThan time.Time) (int64, error)
+}
 
 // Scheduler 后台调度器。
 type Scheduler struct {
-	ticketRepo *repository.TicketRepo
-	cancel     context.CancelFunc
+	ticketSvc ticketAutoCloseService
+	cancel    context.CancelFunc
 }
 
 // NewScheduler 创建 Scheduler 实例。
-func NewScheduler(ticketRepo *repository.TicketRepo) *Scheduler {
-	return &Scheduler{ticketRepo: ticketRepo}
+func NewScheduler(svc ticketAutoCloseService) *Scheduler {
+	return &Scheduler{ticketSvc: svc}
 }
 
 // Start 启动调度器。
@@ -78,5 +81,5 @@ func (s *Scheduler) runAutoCloseLoop(ctx context.Context) {
 // 为什么暴露为公开方法：便于测试时直接调用，无需等待 ticker。
 // AutoCloseTickets 在事务中关闭申告并创建 action=auto_close 的 TicketRecord。
 func (s *Scheduler) RunAutoClose(olderThan time.Time) (int64, error) {
-	return s.ticketRepo.AutoCloseTickets(olderThan)
+	return s.ticketSvc.AutoClose(olderThan)
 }

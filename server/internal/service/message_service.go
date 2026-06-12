@@ -57,6 +57,9 @@ func (s *MessageService) NotifySupplement(ticketID int64, userID int64) error {
 
 // ListMessages 分页查询用户消息列表。
 func (s *MessageService) ListMessages(userID int64, page, pageSize int) ([]model.Message, int64, error) {
+	if userID <= 0 {
+		return nil, 0, AppError{Code: errcode.ErrParam, Message: "无效的用户 ID"}
+	}
 	return s.repo.ListByUser(userID, page, pageSize)
 }
 
@@ -76,5 +79,8 @@ func (s *MessageService) MarkAsRead(id int64, userID int64) error {
 
 // CountUnread 查询指定用户的未读消息数。
 func (s *MessageService) CountUnread(userID int64) (int64, error) {
+	if userID <= 0 {
+		return 0, AppError{Code: errcode.ErrParam, Message: "无效的用户 ID"}
+	}
 	return s.repo.CountUnread(userID)
 }
