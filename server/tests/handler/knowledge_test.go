@@ -220,6 +220,34 @@ func TestKnowledgeHandler_Review(t *testing.T) {
 	}
 }
 
+// TestKnowledgeHandler_Enable 验证停用文章重新启用。
+func TestKnowledgeHandler_Enable(t *testing.T) {
+	cleanupKnowledgeHandlerTables(t)
+	h := setupKnowledgeHandler(t)
+	r := setupGin()
+
+	kb := &model.KnowledgeBase{Name: "启用测试", RAGWorkspaceSlug: "enable-slug", CreatedBy: 1}
+	knowledgeHandlerDB.Create(kb)
+	article := &model.KnowledgeArticle{KBID: kb.ID, Question: "Q", Answer: "A", Status: 4, CreatedBy: 1}
+	knowledgeHandlerDB.Create(article)
+
+	r.POST("/api/v1/admin/articles/:id/enable", h.Enable)
+
+	req := httptest.NewRequest("POST", "/api/v1/admin/articles/"+itoa(article.ID)+"/enable", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Errorf("期望 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated model.KnowledgeArticle
+	knowledgeHandlerDB.First(&updated, article.ID)
+	if updated.Status != int16(model.ArticleStatusDraft) {
+		t.Errorf("启用后期望 status=1(草稿), got %d", updated.Status)
+	}
+}
+
 // =============================================================================
 // 文档上传测试
 // =============================================================================

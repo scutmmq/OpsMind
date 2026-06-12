@@ -1,6 +1,6 @@
 //go:build integration
 
-// Package integration_test 验证演示数据 seed.sql 的正确性。
+// Package integration_test 验证 001_init.sql 演示数据的正确性。
 //
 // 测试覆盖 PLAN.md Task38 定义的演示数据场景：
 //   - 预设角色数据完整性
@@ -8,7 +8,7 @@
 //   - 知识库和文章数据完整性
 //   - 申告工单状态正确性
 //
-// 本测试需要先执行 seed.sql（通过 psql 加载）。
+// 本测试需要先执行 001_init.sql（通过 psql 加载）。
 // 运行方式：
 //
 //	make seed  # 先加载数据

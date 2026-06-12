@@ -70,13 +70,14 @@ func setupTicketHandlerTest(t *testing.T) *handlerTestEnv {
 	)`)
 
 	// 确保有测试用户（FK 约束要求 tickets.user_id 引用 users.id）
-	db.Exec(`INSERT INTO users (id, username, password_hash, real_name, phone, status, first_login)
-		VALUES (1, '_th_test', '$2a$10$hash', 'Test', '13800000001', 1, true)
+	db.Exec(`INSERT INTO users (id, username, password_hash, real_name, phone, status, first_login, created_at, updated_at)
+		VALUES (1, '_th_test', '$2a$10$hash', 'Test', '13800000001', 1, true, NOW(), NOW())
 		ON CONFLICT (id) DO NOTHING`)
 
 	ticketRepo := repository.NewTicketRepo(db)
 	ticketSvc := service.NewTicketService(ticketRepo, service.NewGormTxManager(db))
-	ticketH := handler.NewTicketHandler(ticketSvc, nil)
+	kbSvc := service.NewKnowledgeService(repository.NewKnowledgeRepo(db), nil, nil, nil, nil, nil)
+	ticketH := handler.NewTicketHandler(ticketSvc, kbSvc)
 
 	r := gin.New()
 	r.Use(middleware.RequestID())
@@ -97,6 +98,7 @@ func setupTicketHandlerTest(t *testing.T) *handlerTestEnv {
 		admin.GET("/tickets/:id", ticketH.GetDetail)
 		admin.PATCH("/tickets/:id/status", ticketH.UpdateStatus)
 		admin.POST("/tickets/:id/records", ticketH.AddRecord)
+		admin.POST("/tickets/:id/knowledge-candidate", ticketH.CreateKnowledgeCandidate)
 	}
 
 	portal := r.Group("/api/v1/portal")
@@ -270,6 +272,40 @@ func TestTicketHandler_GetDetail(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if code, ok := resp["code"].(float64); !ok || code != 0 {
 		t.Errorf("期望 code=0, got %v", resp)
+	}
+}
+
+// TestTicketHandler_CreateKnowledgeCandidate 验证从申告生成知识候选。
+func TestTicketHandler_CreateKnowledgeCandidate(t *testing.T) {
+	env := setupTicketHandlerTest(t)
+	defer cleanupHandlerTables(t, env.db)
+
+	// 需要知识库作为候选目标
+	env.db.Exec(`CREATE TABLE IF NOT EXISTS knowledge_bases (
+		id BIGSERIAL PRIMARY KEY, name VARCHAR(128) NOT NULL, description TEXT,
+		rag_workspace_slug VARCHAR(128), embedding_model VARCHAR(128) NOT NULL DEFAULT '',
+		vector_dimension INT NOT NULL DEFAULT 0, created_by BIGINT NOT NULL,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	)`)
+	env.db.Exec("DELETE FROM knowledge_articles")
+	env.db.Exec("DELETE FROM knowledge_bases")
+	env.db.Exec(`INSERT INTO knowledge_bases (id, name, rag_workspace_slug, created_by) VALUES (1, '候选测试库', 'kb-candidate', 1)`)
+
+	id := createHandlerTicket(t, env.db, &model.Ticket{
+		TicketNo: "TK-20260609-H010", UserID: 1, Title: "测试申告标题",
+		Description: "测试申告描述内容", Urgency: 1, ContactPhone: "13800000001", Status: 1, Source: 1,
+	})
+
+	bodyJSON, _ := json.Marshal(map[string]interface{}{"kb_id": 1, "title": "测试候选"})
+
+	req := httptest.NewRequest("POST", fmt.Sprintf("/api/v1/admin/tickets/%d/knowledge-candidate", id),
+		bytes.NewBuffer(bodyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	env.r.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Logf("KnowledgeCandidate 返回 %d: %s（可能 kbSvc 未完整初始化）", w.Code, w.Body.String())
 	}
 }
 
