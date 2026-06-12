@@ -3,7 +3,7 @@
 // Package repository_test 验证 KnowledgeRepo 数据访问层。
 //
 // 测试覆盖 KnowledgeBase、KnowledgeArticle、KnowledgeChunk 的全部数据访问方法。
-// EmbeddingConfig 已迁移至 llm_configs 表（v2）。
+// EmbeddingConfig 已迁移至 llm_configs 表。
 // 使用独立的 opsmind_test 数据库，每个测试用例通过清理保证隔离性。
 package repository_test
 
@@ -52,7 +52,7 @@ func setupKnowledgeTestDB(t *testing.T) *gorm.DB {
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	)`)
 
-	// v2 schema 迁移：如旧表使用 question/answer 列则重建
+	// 重建表以确保使用最新 schema
 	db.Exec(`DROP TABLE IF EXISTS knowledge_articles CASCADE`)
 	db.Exec(`CREATE TABLE knowledge_articles (
 		id BIGSERIAL PRIMARY KEY,

@@ -36,14 +36,14 @@ func pgvectorDSN() string {
 }
 
 // mustVectorStore 创建测试用 VectorStore，连接失败跳过测试。
-// 同时确保 knowledge_chunks 表使用 v2 schema（含 kb_id、chunk_index、embedding 列）。
+// 同时确保 knowledge_chunks 表含 kb_id、chunk_index、embedding 列。
 func mustVectorStore(t *testing.T) adapter.VectorStore {
 	t.Helper()
 	store, err := adapter.NewPgvectorStore(pgvectorDSN())
 	if err != nil {
 		t.Skipf("跳过集成测试：无法连接 pgvector (%v)", err)
 	}
-	// 确保 knowledge_chunks 表使用 v2 schema
+	// 确保 knowledge_chunks 表 schema 正确
 	ensureChunksTableV2(t)
 	return store
 }

@@ -84,8 +84,8 @@ Authorization: Bearer <token>
 | description | string | 描述 |
 | embedding_model | string | 使用的 embedding 模型名称 |
 | vector_dimension | int | 向量维度 |
-| llm_config_id | int64 | 关联的 LLM 配置 ID（v2 新增，替代 v1 的 `rag_workspace_slug`） |
-| article_count | int | 文章数量（v2 新增） |
+| llm_config_id | int64 | 关联的 LLM 配置 ID |
+| article_count | int | 文章数量 |
 
 ### 2. 创建知识库
 
@@ -114,7 +114,7 @@ Authorization: Bearer <token>
 | vector_dimension | int | ✓ | 向量维度（与 llm_config 一致） |
 | llm_config_id | int64 | | LLM 配置 ID（默认使用系统默认配置） |
 
-> v2 变更：不再创建 AnythingLLM workspace。知识库创建仅写入 PostgreSQL 记录，向量存储通过 pgvector 表 `knowledge_chunks` 管理。
+> 知识库创建仅写入 PostgreSQL 记录，向量存储通过 pgvector 表 `knowledge_chunks` 管理。
 
 ### 3. 更新知识库
 
@@ -127,7 +127,7 @@ Authorization: Bearer <token>
 
 ```json
 {
-  "name": "网络运维知识库 v2",
+  "name": "网络运维知识库",
   "description": "更新后的描述"
 }
 ```
@@ -210,13 +210,13 @@ Authorization: Bearer <token>
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| title | string | **v2 新增** — 文章标题（手动输入时填写，文档上传时取文件名） |
-| content | string | **v2 字段** — 文章正文全文（替代 v1 的 `question`/`answer` 分离） |
-| source_type | int | **v2 新增** — 1=手动输入, 2=文档上传 |
-| word_count | int | **v2 新增** — 正文字数 |
-| chunk_count | int | **v2 新增** — 分块数（发布后填充） |
-| file_type | string\|null | **v2 新增** — 文档类型：pdf/docx/md/txt，仅 source_type=2 |
-| process_status | string | **v2 新增** — 文档处理状态：pending/parsing/chunking/embedding/completed/failed |
+| title | string | 文章标题（手动输入时填写，文档上传时取文件名） |
+| content | string | 文章正文全文 |
+| source_type | int | 1=手动输入, 2=文档上传 |
+| word_count | int | 正文字数 |
+| chunk_count | int | 分块数（发布后填充） |
+| file_type | string\|null | 文档类型：pdf/docx/md/txt，仅 source_type=2 |
+| process_status | string | 文档处理状态：pending/parsing/chunking/embedding/completed/failed |
 
 ### 5. 创建文章
 
@@ -245,7 +245,7 @@ Authorization: Bearer <token>
 | category | string | | 分类 |
 | tags | string[] | | 标签列表 |
 
-> v2 变更：移除 `question`/`answer` 分离字段，改为 `title`/`content` 统一模型。状态初始为「草稿(1)」。
+> 创建后状态初始为「草稿(1)」。
 
 ### 6. 更新文章
 
@@ -322,15 +322,15 @@ Authorization: Bearer <token>
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | chunks | array | 文章的分块列表（含向量相关信息） |
-| chunks[].kb_id | int64 | **v2 新增** — 知识库 ID（冗余字段，加速检索过滤） |
-| chunks[].chunk_index | int | **v2 新增** — 分块序号（从 0 开始） |
+| chunks[].kb_id | int64 | 知识库 ID（冗余字段，加速检索过滤） |
+| chunks[].chunk_index | int | 分块序号（从 0 开始） |
 | chunks[].embedding_model | string | embedding 模型名称 |
 | chunks[].vector_dimension | int | 向量维度 |
-| minio_path | string\|null | **v2 新增** — MinIO 对象路径（仅文档上传） |
-| process_status | string | **v2 新增** — 文档处理状态 |
-| process_error | string\|null | **v2 新增** — 处理失败原因 |
+| minio_path | string\|null | MinIO 对象路径（仅文档上传） |
+| process_status | string | 文档处理状态 |
+| process_error | string\|null | 处理失败原因 |
 
-> v2 变更：chunks 移除 `sync_status`/`sync_error`/`synced_at` 字段（v1 AnythingLLM 同步状态），新增 `kb_id`/`chunk_index`。embedding 向量不通过 JSON 返回（过大），仅在数据库中存储。
+> chunks 含 `kb_id`/`chunk_index` 字段。embedding 向量不通过 JSON 返回（过大），仅在数据库中存储。
 
 ---
 
@@ -513,14 +513,12 @@ Authorization: Bearer <token>
 
 > 状态：审核通过(3) → 已发布(4)
 >
-> **v2 内部逻辑：**
+> **内部逻辑：**
 > 1. 对文章 `content` 执行文本分块（Chunker）
 > 2. 批量调用 Embedding API 生成向量（Embedder）
 > 3. 将分块和向量写入 `knowledge_chunks` 表（VectorStore.BatchInsert）
 > 4. 失效该知识库的 BM25 缓存（BM25Retriever.Invalidate）
 > 5. 记录审计日志
->
-> **v1 → v2 变更：** 不再调用 AnythingLLM API 同步文档。所有操作在 OpsMind 进程内完成。
 
 **发布失败处理：**
 
@@ -535,7 +533,7 @@ Authorization: Bearer <token>
 
 > 状态：已发布(4) → 已停用(5)
 >
-> **v2 内部逻辑：**
+> **内部逻辑：**
 > 1. 从 `knowledge_chunks` 删除该文章的所有向量分块（VectorStore.DeleteByArticle）
 > 2. 失效该知识库的 BM25 缓存（BM25Retriever.Invalidate）
 > 3. 记录审计日志
@@ -562,7 +560,7 @@ Authorization: Bearer <token>
 
 > 当发布时向量写入失败（`process_status=failed`），可重试。仅对「审核通过(3)」状态的文章有效。
 >
-> **v1 → v2 变更：** 路径不变，内部逻辑从「重试 AnythingLLM 同步」改为「重试 embedding 生成 + pgvector 写入」。
+> 重试 embedding 生成 + pgvector 写入。
 
 ---
 
@@ -577,7 +575,7 @@ Authorization: Bearer <token>
 
 > 删除知识库及其下所有文章、分块向量、MinIO 文档文件。不可逆操作。
 >
-> **v2 内部逻辑：**
+> **内部逻辑：**
 > 1. 删除 `knowledge_chunks` 中该 kb 的所有向量（VectorStore.DeleteByKB）
 > 2. 删除 MinIO 中 `kb_{id}/` 前缀的所有文档文件
 > 3. 删除 `knowledge_articles` 记录

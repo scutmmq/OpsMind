@@ -17,14 +17,12 @@ type UpdateKBRequest struct {
 	Description string `json:"description"`              // 知识库描述
 }
 
-// CreateArticleRequest 创建知识文章请求（v2 title/content + 兼容 v1 question/answer）。
+// CreateArticleRequest 创建知识文章请求。
 type CreateArticleRequest struct {
 	KBID       int64    `json:"kb_id"`                        // 所属知识库 ID（可从路径或 JSON 获取）
-	Question   string   `json:"question"`                     // [v1 兼容] 问题/标题
-	Answer     string   `json:"answer"`                       // [v1 兼容] 答案/内容
-	Title      string   `json:"title" binding:"required"`     // [v2] 标题（必填）
-	Content    string   `json:"content" binding:"required"`   // [v2] 内容（必填）
-	SourceType int16    `json:"source_type"`                  // [v2] 来源类型 1=手动 2=文档上传 3=申告转换
+	Title      string   `json:"title" binding:"required"`     // 标题（必填）
+	Content    string   `json:"content" binding:"required"`   // 内容（必填）
+	SourceType int16    `json:"source_type"`                  // 来源类型 1=手动 2=文档上传 3=申告转换
 	Category   string   `json:"category"`                     // 分类
 	Tags       []string `json:"tags"`                         // 标签列表
 }

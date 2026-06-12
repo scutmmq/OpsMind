@@ -3,7 +3,7 @@
 // 与 TECH.md §5.2 问答 API 端点对齐。
 package request
 
-// RAGOptions 检索参数（v2 新增）。
+// RAGOptions 检索参数。
 type RAGOptions struct {
 	// TODO(dto/chat): bool 字段无法区分未传和显式 false。
 	// 若不传 rag_options，后端应使用默认 true；若传 false，才关闭对应步骤。

@@ -52,7 +52,7 @@ func TestKnowledgeArticle_Fields(t *testing.T) {
 		Tags:               tags,
 		Status:             model.ArticleStatusDraft,
 		CreatedBy:          1,
-		// RAGDocumentLocation removed in v2
+		// RAGDocumentLocation 已移除
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
@@ -69,7 +69,7 @@ func TestKnowledgeArticle_Fields(t *testing.T) {
 	}
 }
 
-// TestKnowledgeChunk_Fields 验证 KnowledgeChunk 模型字段与 v2 schema 一致。
+// TestKnowledgeChunk_Fields 验证 KnowledgeChunk 模型字段。
 func TestKnowledgeChunk_Fields(t *testing.T) {
 	now := time.Now()
 	chunk := model.KnowledgeChunk{

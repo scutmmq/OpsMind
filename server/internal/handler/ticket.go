@@ -243,8 +243,8 @@ func (h *TicketHandler) CreateKnowledgeCandidate(c *gin.Context) {
 	answer := fmt.Sprintf("问题描述：%s\n\n解决方案：%s", detail.Title, detail.Description)
 	articleReq := request.CreateArticleRequest{
 		KBID:     body.KBID,
-		Question: "申告经验 - " + detail.Title,
-		Answer:   answer,
+		Title:   "申告经验 - " + detail.Title,
+		Content: answer,
 	}
 
 	if err := h.kbSvc.CreateArticle(articleReq, userID); err != nil {

@@ -100,7 +100,7 @@ Authorization: Bearer <token>
 
 ```json
 {
-  "value": "OpsMind v2"
+  "value": "OpsMind"
 }
 ```
 

@@ -2,9 +2,7 @@
 
 // Package service_test 验证 ChatService 业务逻辑。
 //
-// v2 迁移：adapter.RagClient 已移除，ChatService 不再依赖外部 RAG 服务。
-// CreateChatSession 在 v1 占位阶段返回 AI 不可用兜底回答（answer=fallbackAIUnavailable,
-// CanSubmitTicket=true），v2 行为由 ChatServiceV2 + SSE 流式端点提供。
+// ChatService 使用自建 RAG 管道（rag.Pipeline），在 AI/Embedding 不可用时返回兜底回答。
 //
 // 保留测试：参数校验、会话持久化、反馈提交、详情查询。
 package service_test
@@ -102,7 +100,7 @@ func setupChatServiceTest(t *testing.T) (*service.ChatService, *model.KnowledgeB
 // CreateChatSession
 // =============================================================================
 
-// TestChatService_CreateChatSession_Success 验证问答会话创建成功（v1 占位阶段返回兜底回答）。
+// TestChatService_CreateChatSession_Success 验证问答会话创建成功。
 func TestChatService_CreateChatSession_Success(t *testing.T) {
 	svc, kb := setupChatServiceTest(t)
 
@@ -116,20 +114,20 @@ func TestChatService_CreateChatSession_Success(t *testing.T) {
 		t.Fatalf("期望无错误, got %v", err)
 	}
 	if resp.Answer == "" {
-		t.Error("期望非空 Answer（v1 占位阶段应有兜底回答）")
+		t.Error("期望非空 Answer")
 	}
 	if resp.Question != "如何重置密码？" {
 		t.Errorf("期望 Question 保持原值, got '%s'", resp.Question)
 	}
 	if !resp.CanSubmitTicket {
-		t.Error("CanSubmitTicket 应为 true（v1 占位阶段）")
+		t.Error("CanSubmitTicket 应为 true")
 	}
 	if resp.SessionID == 0 {
 		t.Error("应填充 SessionID")
 	}
 }
 
-// TestChatService_CreateChatSession_LowConfidence v1 占位阶段始终返回低置信度（RagClient 已移除）。
+// TestChatService_CreateChatSession_LowConfidence 验证兜底回答场景。
 func TestChatService_CreateChatSession_LowConfidence(t *testing.T) {
 	svc, kb := setupChatServiceTest(t)
 
@@ -139,7 +137,7 @@ func TestChatService_CreateChatSession_LowConfidence(t *testing.T) {
 		t.Fatalf("期望无错误, got %v", err)
 	}
 	if !resp.CanSubmitTicket {
-		t.Error("CanSubmitTicket 应为 true（v1 占位阶段始终可提交申告）")
+		t.Error("CanSubmitTicket 应为 true")
 	}
 }
 

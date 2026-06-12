@@ -7,9 +7,8 @@
 //   - 低置信度 → can_submit_ticket=true
 //   - 提交反馈 → 反馈状态验证
 //
-// v2 迁移说明：RagClient（AnythingLLM）已移除，ChatService 使用 v1 占位实现。
-// 所有会话的 answer 统一返回降级兜底文本，confidence 为 0。
-// 真正的 RAG 流式问答由 ChatServiceV2（SSE 端点）提供。
+// ChatService 在 AI/Embedding 不可用时返回降级兜底文本（confidence=0）。
+// 完整的 RAG 流式问答由 SSE 端点提供。
 //
 // 数据库使用真实 PostgreSQL opsmind_test 库。
 package integration_test
@@ -163,8 +162,7 @@ func setupChatIntegration(t *testing.T) *chatIntEnv {
 func TestChatIntegration_FullFlow(t *testing.T) {
 	env := setupChatIntegration(t)
 
-	// v2 迁移：RagClient 已移除，ChatService(v1) 对所有请求返回兜底回答。
-	// 真正的 RAG 流式问答由 ChatServiceV2 通过 SSE 端点提供。
+	// AI 不可用时返回兜底回答。完整的 RAG 流式问答由 SSE 端点提供。
 
 	// 1. 创建问答会话
 	askBody, _ := json.Marshal(map[string]interface{}{
@@ -188,10 +186,10 @@ func TestChatIntegration_FullFlow(t *testing.T) {
 
 	sessionID := createResp.Data.SessionID
 	assert.NotZero(t, sessionID, "应返回 SessionID")
-	// v1 占位实现：统一返回降级兜底文本
+	// 降级场景：统一返回兜底文本
 	assert.NotEmpty(t, createResp.Data.Answer, "应返回兜底回答")
-	assert.True(t, createResp.Data.CanSubmitTicket, "v1 占位实现中 CanSubmitTicket 应为 true")
-	assert.Nil(t, createResp.Data.Sources, "v1 占位实现不返回知识来源")
+	assert.True(t, createResp.Data.CanSubmitTicket, "降级场景中 CanSubmitTicket 应为 true")
+	assert.Nil(t, createResp.Data.Sources, "降级场景不返回知识来源")
 	assert.GreaterOrEqual(t, createResp.Data.DurationMS, 0, "DurationMS 应 >= 0")
 	t.Logf("✅ 步骤1: 问答创建成功，answer='%s'，conf=%.2f",
 		createResp.Data.Answer, createResp.Data.Confidence)
@@ -223,8 +221,7 @@ func TestChatIntegration_FullFlow(t *testing.T) {
 	assert.Equal(t, int16(1), detailResp.Data.Feedback, "反馈状态应为 1(resolved)")
 	t.Logf("✅ 步骤3: 反馈状态验证通过")
 
-	// 4. 验证数据库中会话已持久化（v1 占位实现不创建 chat_messages，
-	// 真正的消息持久化由 ChatServiceV2 SSE 流式管道负责）
+	// 4. 验证数据库中会话已持久化（消息持久化由 SSE 流式管道负责）
 	var sessionCount int64
 	env.db.Model(&model.ChatSession{}).Where("id = ?", sessionID).Count(&sessionCount)
 	assert.Equal(t, int64(1), sessionCount, "数据库应有 1 条会话记录")
@@ -237,7 +234,7 @@ func TestChatIntegration_FullFlow(t *testing.T) {
 
 // TestChatIntegration_LowConfidenceToTicket 验证低置信度时引导用户提交申告。
 //
-// v2 迁移：RagClient 已移除，v1 占位实现中所有回答均为低置信度（0），
+// AI 不可用时所有回答均为低置信度（0），
 // CanSubmitTicket 永远为 true。此测试验证该行为符合预期。
 func TestChatIntegration_LowConfidenceToTicket(t *testing.T) {
 	env := setupChatIntegration(t)
@@ -257,7 +254,7 @@ func TestChatIntegration_LowConfidenceToTicket(t *testing.T) {
 		Data response.ChatSessionResponse `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.True(t, resp.Data.CanSubmitTicket, "v1 占位实现中 CanSubmitTicket 应为 true")
+	assert.True(t, resp.Data.CanSubmitTicket, "降级场景中 CanSubmitTicket 应为 true")
 	assert.NotEmpty(t, resp.Data.Answer, "应有兜底回答")
 	t.Logf("✅ 低置信度（confidence=0）→ CanSubmitTicket=true, 兜底回答='%s'", resp.Data.Answer)
 }
@@ -268,8 +265,7 @@ func TestChatIntegration_LowConfidenceToTicket(t *testing.T) {
 
 // TestChatIntegration_AIServiceUnavailable 验证 AI 服务不可用时的降级处理。
 //
-// v2 迁移：RagClient 已移除，v1 占位实现不依赖外部 AI 服务，
-// 所有请求统一按降级路径处理，返回兜底回答（code=0）。
+// 不依赖外部 AI 服务时，所有请求统一按降级路径处理，返回兜底回答（code=0）。
 func TestChatIntegration_AIServiceUnavailable(t *testing.T) {
 	env := setupChatIntegration(t)
 
@@ -282,13 +278,13 @@ func TestChatIntegration_AIServiceUnavailable(t *testing.T) {
 	w := httptest.NewRecorder()
 	env.r.ServeHTTP(w, req)
 
-	// v1 占位：不调用 AI，直接返回兜底回答
+	// 不调用 AI，直接返回兜底回答
 	var resp struct {
 		Code int `json:"code"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, 0, resp.Code, "v1 占位实现不依赖 AI，应正常返回 code=0")
-	t.Logf("✅ AI 不可用降级 → code=0（占位实现，不依赖外部 AI 服务）")
+	assert.Equal(t, 0, resp.Code, "降级场景应正常返回 code=0")
+	t.Logf("✅ AI 不可用降级 → code=0（不依赖外部 AI 服务）")
 }
 
 // =============================================================================

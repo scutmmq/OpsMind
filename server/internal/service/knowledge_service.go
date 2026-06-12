@@ -145,8 +145,6 @@ func (s *KnowledgeService) ListKBs() ([]response.KBResponse, error) {
 
 // CreateArticle 创建知识文章（草稿状态）。
 func (s *KnowledgeService) CreateArticle(req request.CreateArticleRequest, userID int64) error {
-	// TODO(service/knowledge): DTO 仍使用 question/answer，PRD/API v2 已改为 title/content/source_type。
-	// 应统一模型语言，否则前端 KnowledgeEdit 的 title/content 会和后端字段错位。
 	_, err := s.repo.FindKBByID(req.KBID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -407,7 +405,7 @@ func (s *KnowledgeService) ListArticles(kbID int64, status int, page, pageSize i
 // GetArticleDetail 获取文章详情。
 func (s *KnowledgeService) GetArticleDetail(id int64) (*response.ArticleDetailResponse, error) {
 	// TODO(service/knowledge): 详情响应仍返回 sync_status/sync_error/synced_at。
-	// v2 文档已移除 AnythingLLM 同步概念，应改为 process_status/process_error/chunk_index。
+	// TODO(service/knowledge): 应改为 process_status/process_error/chunk_index。
 	article, err := s.repo.FindArticleByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

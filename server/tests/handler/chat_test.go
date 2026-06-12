@@ -172,7 +172,7 @@ func TestChatHandler_CreateSession_LowConfidence(t *testing.T) {
 	}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if !resp.Data.CanSubmitTicket {
-		t.Error("v1 占位响应置信度为 0，CanSubmitTicket 应为 true")
+		t.Error("兜底响应置信度为 0，CanSubmitTicket 应为 true")
 	}
 }
 

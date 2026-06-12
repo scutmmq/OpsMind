@@ -1,6 +1,6 @@
 // Package rag 实现自建 RAG 检索引擎。
 //
-// rag 包是 OpsMind v2 的核心领域模块，包含：
+// rag 包是 OpsMind 的核心领域模块，包含：
 //   - 文本分块（RecursiveCharacterTextSplitter）
 //   - BM25 倒排索引 + 中文分词（gse）
 //   - 向量 Embedding 批量生成

@@ -31,7 +31,7 @@ type ArticleListResponse struct {
 	Total    int64             `json:"total"`
 }
 
-// ArticleResponse 文章列表项响应（v2 title/content）。
+// ArticleResponse 文章列表项响应。
 type ArticleResponse struct {
 	ID            int64     `json:"id"`
 	KBID          int64     `json:"kb_id"`

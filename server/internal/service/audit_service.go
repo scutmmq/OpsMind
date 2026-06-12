@@ -1,7 +1,7 @@
 // Package service 实现审计日志业务逻辑。
 //
 // audit_service.go 提供审计日志查询服务，统一 handler→service→repository 分层。
-// v1 中原 AuditHandler 直接依赖 *repository.AuditRepo 和 *gorm.DB，跳过了 Service 层。
+// AuditService 将审计日志操作统一到 Service 层，遵循 handler→service→repository 分层。
 package service
 
 import (

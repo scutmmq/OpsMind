@@ -29,7 +29,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&model.KnowledgeBase{},
 		&model.KnowledgeArticle{},
 		&model.KnowledgeChunk{},
-		&model.LlmConfig{}, // 与 migrations/v2/005_create_llm_configs.sql 保持一致，确保开发环境 AutoMigrate 也创建此表
+		&model.LlmConfig{}, // 确保开发环境 AutoMigrate 也创建此表
 		&model.ChatSession{},
 		&model.ChatMessage{},
 		&model.AuditLog{},

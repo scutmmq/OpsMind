@@ -25,7 +25,7 @@ import (
 // LLMConfigHandler LLM 配置管理接口。
 type LLMConfigHandler struct {
 	svc       llmConfigService
-	llmClient adapter.LLMClient // v2: 用于 TestConnection 验证连接
+	llmClient adapter.LLMClient // 用于 TestConnection 验证连接
 }
 
 // llmConfigService 定义 Handler 需要的 Service 方法（消费者定义接口）。

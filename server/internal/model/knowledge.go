@@ -21,7 +21,7 @@ type KnowledgeBase struct {
 
 func (KnowledgeBase) TableName() string { return "knowledge_bases" }
 
-// KnowledgeArticle 知识文章表（v2 统一文章模型：title + content + source_type）。
+// KnowledgeArticle 知识文章表（统一文章模型：title + content + source_type）。
 type KnowledgeArticle struct {
 	ID              int64          `gorm:"primaryKey;autoIncrement" json:"id"`
 	KBID            int64          `gorm:"not null;column:kb_id" json:"kb_id"`

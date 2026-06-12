@@ -7,9 +7,8 @@
 //   - 审核驳回流程
 //   - 知识库列表和文章列表查询
 //
-// v2 迁移说明：RagClient（AnythingLLM）已移除，KnowledgeService(v1) 中的
-// Publish/Disable/RetrySync 仅管理数据库状态，不再调用外部 RAG 服务。
-// 真正的向量同步由 KnowledgeServiceV2（自建 pgvector 管道）负责。
+// Publish/Disable/RetrySync 仅管理数据库和向量状态，
+// 不依赖外部 RAG 服务。
 //
 // 数据库使用真实 PostgreSQL opsmind_test 库。
 package integration_test
@@ -229,7 +228,7 @@ func postJSON(t *testing.T, env *knowledgeIntEnv, url string, body interface{}) 
 // TestKnowledgeIntegration_FullLifecycle 验证完整知识生命周期。
 //
 // 流程：创建知识库 → 创建草稿 → 提交审核 → 审核通过 → 发布 → 停用 → 重试同步。
-// v2 迁移：RagClient 已移除，Publish/Disable/RetrySync 仅管理数据库状态，
+// Publish/Disable/RetrySync 仅管理数据库状态，
 // 不再调用外部 RAG 服务。
 func TestKnowledgeIntegration_FullLifecycle(t *testing.T) {
 	env := setupKnowledgeIntegration(t)
@@ -295,7 +294,7 @@ func TestKnowledgeIntegration_FullLifecycle(t *testing.T) {
 	assert.Equal(t, int16(3), article.Status, "审核通过后状态应为 3(已审核)")
 
 	// 5. 发布 → status: 3→4
-	// v2 迁移：RagClient 已移除，发布仅更新数据库状态，不再调用 SyncDocument。
+	// 发布仅更新数据库状态。
 	publishBody := postJSON(t, env, fmt.Sprintf("/api/v1/admin/articles/%d/publish", articleID), nil)
 	var publishResp struct{ Code int }
 	require.NoError(t, json.Unmarshal(publishBody, &publishResp))

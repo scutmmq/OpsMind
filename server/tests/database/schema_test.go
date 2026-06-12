@@ -185,8 +185,7 @@ func TestSchema_RunAll(t *testing.T) {
 		if !columnExists(t, db, "knowledge_articles", "content") {
 			t.Error("knowledge_articles.content 应存在 (原 answer 列改名)")
 		}
-		// v2 新增字段
-		for _, col := range []string{"title", "source_type", "word_count", "chunk_count", "file_type", "minio_path", "process_status", "process_error"} {
+				for _, col := range []string{"title", "source_type", "word_count", "chunk_count", "file_type", "minio_path", "process_status", "process_error"} {
 			if !columnExists(t, db, "knowledge_articles", col) {
 				t.Errorf("knowledge_articles.%s 应已新增", col)
 			}
@@ -200,8 +199,7 @@ func TestSchema_RunAll(t *testing.T) {
 				t.Errorf("knowledge_chunks.%s 应已删除", col)
 			}
 		}
-		// v2 新增字段
-		for _, col := range []string{"kb_id", "chunk_index"} {
+				for _, col := range []string{"kb_id", "chunk_index"} {
 			if !columnExists(t, db, "knowledge_chunks", col) {
 				t.Errorf("knowledge_chunks.%s 应已新增", col)
 			}
@@ -278,7 +276,7 @@ func TestSchema_RunAll(t *testing.T) {
 				table,
 			).Scan(&exists)
 			if !exists {
-				t.Errorf("表 %s 应保留（迁移不应删除 v2 未涉及的旧表）", table)
+				t.Errorf("表 %s 应保留", table)
 			}
 		}
 	})

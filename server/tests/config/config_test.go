@@ -61,7 +61,7 @@ func TestLoad_DefaultValues(t *testing.T) {
 		t.Error("MinIO.UseSSL = true, 期望 false")
 	}
 
-	// v2: LLM 配置替代 v1 AnythingLLM 配置
+	// LLM 配置
 	if cfg.LLM.BaseURL != "http://llama-cpp:8080/v1" {
 		t.Errorf("LLM.BaseURL = %q, 期望 http://llama-cpp:8080/v1", cfg.LLM.BaseURL)
 	}
@@ -72,7 +72,7 @@ func TestLoad_DefaultValues(t *testing.T) {
 		t.Errorf("LLM.MaxTokens = %d, 期望 8192", cfg.LLM.MaxTokens)
 	}
 
-	// v2: Embedding 配置（与 LLM 共用 BaseURL，但独立模型名和维度）
+	// Embedding 配置（与 LLM 共用 BaseURL，但独立模型名和维度）
 	if cfg.Embedding.Model != "bge-m3" {
 		t.Errorf("Embedding.Model = %q, 期望 bge-m3", cfg.Embedding.Model)
 	}
@@ -184,7 +184,7 @@ func TestLoad_StructFields(t *testing.T) {
 		t.Error("MinIO.SecretKey 未填充")
 	}
 
-	// v2: 验证 LLM 结构体
+	// 验证 LLM 结构体
 	if cfg.LLM.BaseURL == "" {
 		t.Error("LLM.BaseURL 未填充")
 	}
@@ -195,7 +195,7 @@ func TestLoad_StructFields(t *testing.T) {
 		t.Error("LLM.MaxTokens 未填充")
 	}
 
-	// v2: 验证 Embedding 结构体
+	// 验证 Embedding 结构体
 	if cfg.Embedding.Model == "" {
 		t.Error("Embedding.Model 未填充")
 	}

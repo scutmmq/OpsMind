@@ -2,8 +2,7 @@
 
 // Package service_test 验证 KnowledgeService 业务逻辑。
 //
-// v2 迁移：adapter.RagClient 已移除，CreateKB/Publish/Disable/RetrySync 不再同步
-// 到外部 RAG 服务。v2 向量同步由 KnowledgeServiceV2（自建 pgvector 管道）负责。
+// CreateKB/Publish/Disable/RetrySync 操作数据库状态。
 //
 // 保留测试：知识库 CRUD、文章 CRUD、审核流程、EmbeddingConfig CRUD。
 package service_test
@@ -92,7 +91,7 @@ func createTestArticle(t *testing.T, _ *service.KnowledgeService, kbID int64, st
 // KnowledgeBase 测试
 // =============================================================================
 
-// TestKnowledgeService_CreateKB 创建知识库成功（v2：不再调用 RagClient.CreateWorkspace）。
+// TestKnowledgeService_CreateKB 创建知识库成功。
 func TestKnowledgeService_CreateKB(t *testing.T) {
 	svc := setupKnowledgeService(t)
 
@@ -111,7 +110,7 @@ func TestKnowledgeService_CreateKB(t *testing.T) {
 		t.Errorf("期望名称 '测试知识库', got '%s'", kb.Name)
 	}
 	if kb.RAGWorkspaceSlug == "" {
-		t.Errorf("v2 CreateKB 应自动生成 RAGWorkspaceSlug, 但为空")
+		t.Errorf("CreateKB 应自动生成 RAGWorkspaceSlug, 但为空")
 	}
 }
 
@@ -427,7 +426,7 @@ func TestKnowledgeService_GetArticleDetail(t *testing.T) {
 	kb := createTestKB(t, svc, "详情测试库")
 	article := createTestArticle(t, svc, kb.ID, 1)
 
-	// 创建切片（v2 schema：无 sync_status/sync_error/synced_at 字段）
+	// 创建切片
 	chunk := model.KnowledgeChunk{
 		ArticleID:       article.ID,
 		Content:         "切片内容",

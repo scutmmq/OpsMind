@@ -20,5 +20,5 @@ func placeholder() gin.HandlerFunc {
 	}
 }
 
-// register 和 registerGroup 已在 v2 重构中移除——portal.go 和 admin.go 使用手写 nil-check。
+// portal.go 和 admin.go 使用手写 nil-check 注册路由。
 // 保留 helpers.go 仅提供 placeholder() 辅助函数。
