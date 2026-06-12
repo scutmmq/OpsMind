@@ -69,3 +69,5 @@ logs/
 *.cache
 Course Design
 .playwright-mcpopsmind-server.exe
+*.exe
+.playwright-mcp

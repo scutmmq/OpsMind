@@ -47,15 +47,15 @@ Authorization: Bearer <token>
     },
     {
       "id": 2,
-      "name": "OpenAI GPT-4o-mini + 本地 bge-m3",
+      "name": "OpenAI API",
       "provider_type": 2,
       "base_url": "https://api.openai.com/v1",
-      "embedding_base_url": "http://llama-cpp:8080/v1",
+      "embedding_base_url": "",
       "api_key": "sk-****Ab12",
       "llm_model": "gpt-4o-mini",
-      "embedding_model": "bge-m3",
+      "embedding_model": "text-embedding-3-small",
       "max_tokens": 16384,
-      "vector_dimension": 1024,
+      "vector_dimension": 1536,
       "is_default": false,
       "created_at": "2026-06-11T19:30:00Z",
       "updated_at": "2026-06-11T19:30:00Z"
@@ -104,22 +104,23 @@ Authorization: Bearer <token>
 }
 ```
 
-**方案 B — OpenAI LLM + 本地 Embedding（混合部署）：**
+**方案 B — OpenAI-compatible API（LLM / Embedding 可任意组合）：**
 
 ```json
 {
-  "name": "OpenAI + 本地 Embedding",
+  "name": "OpenAI API",
   "provider_type": 2,
   "base_url": "https://api.openai.com/v1",
-  "embedding_base_url": "http://llama-cpp:8080/v1",
-  "api_key": "sk-your-openai-api-key",
+  "embedding_base_url": "",
+  "api_key": "sk-your-api-key",
   "llm_model": "gpt-4o-mini",
-  "embedding_model": "bge-m3",
+  "embedding_model": "text-embedding-3-small",
   "max_tokens": 16384,
-  "vector_dimension": 1024,
+  "vector_dimension": 1536,
   "is_default": false
 }
 ```
+> `embedding_base_url` 留空则复用 `base_url`；也可填入其他服务地址（如 `http://llama-cpp:8080/v1`），实现 LLM 和 Embedding 跨服务商组合。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|

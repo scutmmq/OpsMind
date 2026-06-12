@@ -321,10 +321,11 @@ func HashPassword(password string) (string, error) {
 | `MINIO_ROOT_USER` | MinIO 管理员用户名 | minioadmin |
 | `MINIO_ROOT_PASSWORD` | MinIO 管理员密码 | minioadmin |
 | `JWT_SECRET` | JWT 签名密钥 | 需手动设置 |
-| `LLM_BASE_URL` | LLM/Embedding API 地址 | http://llama-cpp:8080/v1 |
+| `LLM_BASE_URL` | LLM API 地址 | http://llama-cpp:8080/v1 |
 | `LLM_API_KEY` | API 密钥（OpenAI 需要；llama.cpp 不需要） | — |
 | `LLM_MODEL` | LLM 模型名称 | qwen3-4b |
 | `LLM_MAX_TOKENS` | 最大生成 Token 数 | 8192 |
+| `EMBEDDING_BASE_URL` | Embedding API 地址（空则回退到 LLM_BASE_URL） | — |
 | `EMBEDDING_MODEL` | Embedding 模型名称 | bge-m3 |
 | `EMBEDDING_DIMENSION` | 向量维度 | 1024 |
 | `AI_CONFIDENCE_THRESHOLD` | 置信度阈值 | 0.6 |
