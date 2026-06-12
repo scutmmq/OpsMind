@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"opsmind/internal/config"
@@ -106,6 +107,7 @@ func setupChatHandlerTest(t *testing.T) *chatHandlerEnv {
 
 	portal := r.Group("/api/v1/portal")
 	{
+		portal.POST("/chat-sessions/stream", chatH.StreamChatSession)
 		portal.POST("/chat-sessions", chatH.CreateChatSession)
 		portal.POST("/chat-sessions/:id/feedback", chatH.SubmitFeedback)
 		portal.GET("/chat-sessions/:id", chatH.GetChatDetail)
@@ -237,5 +239,41 @@ func TestChatHandler_SubmitFeedback(t *testing.T) {
 	json.Unmarshal(detailW.Body.Bytes(), &detailResp)
 	if detailResp.Data.Feedback != 1 {
 		t.Errorf("期望 Feedback=1, got %d", detailResp.Data.Feedback)
+	}
+}
+
+// =============================================================================
+// POST /portal/chat-sessions/stream (SSE)
+// =============================================================================
+
+func TestChatHandler_StreamSession(t *testing.T) {
+	env := setupChatHandlerTest(t)
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"question": "VPN怎么配置？",
+		"kb_id":    env.kb.ID,
+	})
+	req := httptest.NewRequest("POST", "/api/v1/portal/chat-sessions/stream", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	env.r.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Fatalf("期望 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// 验证 SSE Content-Type
+	ct := w.Header().Get("Content-Type")
+	if ct != "text/event-stream" {
+		t.Errorf("期望 Content-Type=text/event-stream, got %s", ct)
+	}
+
+	// 验证 SSE 输出包含 done 事件
+	bodyStr := w.Body.String()
+	if bodyStr == "" {
+		t.Error("SSE 响应不应为空")
+	}
+	if !strings.Contains(bodyStr, `"type":"done"`) && !strings.Contains(bodyStr, "done") {
+		t.Error("SSE 响应应包含 done 事件")
 	}
 }

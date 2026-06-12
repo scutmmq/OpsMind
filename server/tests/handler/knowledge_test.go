@@ -119,6 +119,25 @@ func TestKnowledgeHandler_ListKBs(t *testing.T) {
 	}
 }
 
+// TestKnowledgeHandler_ListKBsForPortal 验证门户端知识库列表。
+func TestKnowledgeHandler_ListKBsForPortal(t *testing.T) {
+	cleanupKnowledgeHandlerTables(t)
+	h := setupKnowledgeHandler(t)
+	r := setupGin()
+
+	knowledgeHandlerDB.Create(&model.KnowledgeBase{Name: "PortalKB", RAGWorkspaceSlug: "portal", CreatedBy: 1})
+
+	r.GET("/api/v1/portal/knowledge-bases", h.ListKBsForPortal)
+
+	req := httptest.NewRequest("GET", "/api/v1/portal/knowledge-bases", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != 200 {
+		t.Errorf("期望 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestKnowledgeHandler_UpdateKB(t *testing.T) {
 	cleanupKnowledgeHandlerTables(t)
 	h := setupKnowledgeHandler(t)
