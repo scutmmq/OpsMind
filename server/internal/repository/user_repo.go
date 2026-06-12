@@ -148,6 +148,15 @@ func (r *UserRepo) GetUserRoles(userID int64) ([]model.Role, error) {
 	return roles, err
 }
 
+// CountUsersByRole 统计拥有指定角色的用户数。
+//
+// 用于角色删除前校验：若关联用户 > 0 则拒绝删除，避免产生孤儿 user_roles 记录。
+func (r *UserRepo) CountUsersByRole(roleID int64) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.UserRole{}).Where("role_id = ?", roleID).Count(&count).Error
+	return count, err
+}
+
 // AssignRoles 分配用户角色（先删后插，保证幂等）。
 func (r *UserRepo) AssignRoles(userID int64, roleIDs []int64) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
@@ -176,6 +185,23 @@ func (r *UserRepo) GetRoleMenus(roleID int64) ([]model.Menu, error) {
 	err := r.db.Joins("JOIN role_menus ON role_menus.menu_id = menus.id").
 		Where("role_menus.role_id = ?", roleID).
 		Order("menus.sort_order ASC, menus.id ASC").
+		Find(&menus).Error
+	return menus, err
+}
+
+// BatchGetRoleMenus 批量查询多个角色的菜单（去重）。
+//
+// 为什么批量查询：用户拥有 N 个角色时，逐角色查询产生 N 次 DB 往返。
+// 批量查询合并为一次 JOIN，避免 N+1 问题。
+func (r *UserRepo) BatchGetRoleMenus(roleIDs []int64) ([]model.Menu, error) {
+	if len(roleIDs) == 0 {
+		return nil, nil
+	}
+	var menus []model.Menu
+	err := r.db.Joins("JOIN role_menus ON role_menus.menu_id = menus.id").
+		Where("role_menus.role_id IN ?", roleIDs).
+		Order("menus.sort_order ASC, menus.id ASC").
+		Distinct().
 		Find(&menus).Error
 	return menus, err
 }

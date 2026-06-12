@@ -117,7 +117,7 @@ func main() {
 	slog.Info("KnowledgeService 已初始化")
 
 	// ChatService（自建 Pipeline + LLMClient）
-	chatService := service.NewChatService(knowledgeRepo, chatRepo, nil, llmClient, llmConfigSvc.GetManager())
+	chatService := service.NewChatService(knowledgeRepo, chatRepo, nil, llmClient, llmConfigSvc.GetManager(), cfg.AI.DefaultTopK)
 	slog.Info("ChatService 已初始化")
 
 	// AuditService

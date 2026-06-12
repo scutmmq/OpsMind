@@ -14,7 +14,7 @@ func placeholder() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusNotImplemented, gin.H{
 			"code":    501,
-			"message": "Not Implemented",
+			"message": "功能未实现",
 			"data":    nil,
 		})
 	}

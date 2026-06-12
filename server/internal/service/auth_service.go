@@ -199,18 +199,18 @@ func (s *AuthService) buildMenuTree(userID int64, roles []model.Role) ([]respons
 		// 系统管理员获取全部菜单
 		menus, err = s.userRepo.ListMenus()
 	} else {
-		// 其他用户：聚合所有角色的菜单（去重）
+		// 其他用户：批量查询所有角色的菜单（一次 DB 查询，避免 N+1）
+		roleIDSlice := make([]int64, len(roles))
+		for i, role := range roles {
+			roleIDSlice[i] = role.ID
+		}
+		allMenus, menuErr := s.userRepo.BatchGetRoleMenus(roleIDSlice)
+		if menuErr != nil {
+			return nil, menuErr
+		}
 		menuMap := make(map[int64]model.Menu)
-		for _, role := range roles {
-			// TODO: 在循环中调用 GetRoleMenus — 用户有 N 个角色则产生 N 次 DB 查询。
-			// 应增加 BatchGetRoleMenus(roleIDs) 方法，一次查询获取所有角色的菜单。
-			roleMenus, roleErr := s.userRepo.GetRoleMenus(role.ID)
-			if roleErr != nil {
-				return nil, roleErr
-			}
-			for _, m := range roleMenus {
-				menuMap[m.ID] = m
-			}
+		for _, m := range allMenus {
+			menuMap[m.ID] = m
 		}
 		for _, m := range menuMap {
 			menus = append(menus, m)

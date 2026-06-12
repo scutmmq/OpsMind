@@ -116,8 +116,15 @@ func (s *RoleService) Delete(id int64) error {
 		return err
 	}
 
-	// TODO: Delete 未检查关联用户 — 删除有用户绑定的角色会留下孤儿 user_roles 记录。
-	// 应先 count 关联用户数，>0 则拒绝删除。
+	// 检查关联用户：有关联用户则拒绝删除，避免产生孤儿 user_roles 记录。
+	count, err := s.userRepo.CountUsersByRole(id)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return AppError{Code: errcode.ErrConflict, Message: "角色下存在关联用户，无法删除"}
+	}
+
 	return s.repo.Delete(id)
 }
 

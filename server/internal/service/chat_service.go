@@ -47,6 +47,7 @@ type chatPipeline interface {
 // knowledgeRepo/chatRepo/pipeline 使用接口类型，便于测试 mock。
 // llmClient 使用 adapter.LLMClient 接口，configMgr 可以为 nil。
 type ChatService struct {
+	defaultTopK   int // 默认检索 TopK（从配置读取）
 	knowledgeRepo chatKnowledgeRepo
 	chatRepo      chatSessionRepo
 	pipeline      chatPipeline
@@ -58,13 +59,17 @@ type ChatService struct {
 //
 // pipeline/llmClient/configMgr 可以为 nil（测试或降级场景）。
 // knowledgeRepo/chatRepo/pipeline 直接使用具体接口类型，编译期校验传入类型。
-func NewChatService(knowledgeRepo chatKnowledgeRepo, chatRepo chatSessionRepo, pipeline chatPipeline, llmClient adapter.LLMClient, configMgr *LLMConfigManager) *ChatService {
+func NewChatService(knowledgeRepo chatKnowledgeRepo, chatRepo chatSessionRepo, pipeline chatPipeline, llmClient adapter.LLMClient, configMgr *LLMConfigManager, defaultTopK int) *ChatService {
+	if defaultTopK <= 0 {
+		defaultTopK = 5
+	}
 	return &ChatService{
 		knowledgeRepo: knowledgeRepo,
 		chatRepo:      chatRepo,
 		pipeline:      pipeline,
 		llmClient:     llmClient,
 		configMgr:     configMgr,
+		defaultTopK:   defaultTopK,
 	}
 }
 
@@ -99,10 +104,10 @@ func (s *ChatService) CreateChatSession(req request.CreateChatRequest, userID in
 	// Step 1: Pipeline 检索（如果 pipeline 可用）
 	var pipelineChunks []rag.RetrievalResult
 	if s.pipeline != nil {
-		// TODO: TopK 和各步骤开关均硬编码，未使用 AI_DEFAULT_TOP_K 配置。
-		// 应支持：1) 从 config 读取默认值；2) 按知识库粒度覆盖；3) 请求级覆盖。
+		// RAG 选项从 ChatService.defaultTopK 读取（源自配置 AI_DEFAULT_TOP_K）。
+		// 各步骤开关当前默认开启，后续可按知识库粒度或请求级覆盖。
 		result, pipeErr := s.pipeline.Execute(ctx, req.Question, req.KBID, rag.RAGOptions{
-			TopK:         5,
+			TopK:         s.defaultTopK,
 			QueryRewrite: true,
 			MultiRoute:   true,
 			Hybrid:       true,
@@ -168,9 +173,6 @@ func (s *ChatService) CreateChatSession(req request.CreateChatRequest, userID in
 		// 无 LLM 客户端：直接返回检索内容摘要
 		var summary strings.Builder
 		for i, chunk := range pipelineChunks {
-			if i >= 3 {
-				break
-			}
 			summary.WriteString(fmt.Sprintf("%d. %s\n", i+1, chunk.Content))
 		}
 		llmAnswer = "以下是与您问题相关的知识条目：\n\n" + summary.String()
@@ -180,10 +182,17 @@ func (s *ChatService) CreateChatSession(req request.CreateChatRequest, userID in
 
 	// Step 4: 保存会话
 	//
-	// TODO: 当前置信度仅按检索命中 chunk 数量 × 0.3 计算，过于粗糙。
-	// 问题：5 个不相关 chunk 可得 1.5（不触发申告），1 个高相关 chunk 只得 0.3（触发申告）。
-	// 应改为取 RRF 融合后的最高分或平均分作为置信度，更能反映检索质量。
-	confidence := float64(len(pipelineChunks)) * 0.3
+	// 置信度取 RAG 检索结果中的最高分（RRF 融合后分数），无结果时默认 0。
+	// 为什么用最高分而非平均分：多 chunk 场景中最高分反映最佳匹配质量，
+	// 避免大量低相关 chunk 拉高或拉低均值。
+	var confidence float64
+	if len(pipelineChunks) > 0 {
+		for _, c := range pipelineChunks {
+			if c.Score > confidence {
+				confidence = c.Score
+			}
+		}
+	}
 	session := &model.ChatSession{
 		UserID:     userID,
 		KBID:       req.KBID,
