@@ -220,6 +220,7 @@ func (h *ChatHandler) streamWithLLM(c *gin.Context, flusher http.Flusher, fallba
 		return
 	}
 
+	rc := http.NewResponseController(c.Writer)
 	for chunk := range tokenCh {
 		select {
 		case <-ctx.Done():
@@ -231,6 +232,8 @@ func (h *ChatHandler) streamWithLLM(c *gin.Context, flusher http.Flusher, fallba
 		}
 		writeSSEEvent(c.Writer, sseEvent{Type: "token", Content: chunk.Content})
 		flusher.Flush()
+		// 每次写入后延长写超时，保证长 SSE 流不被 WriteTimeout 截断
+		rc.SetWriteDeadline(time.Now().Add(30 * time.Second))
 		if chunk.FinishReason != "" {
 			break
 		}
@@ -241,6 +244,7 @@ func (h *ChatHandler) streamWithLLM(c *gin.Context, flusher http.Flusher, fallba
 func (h *ChatHandler) streamSimulated(c *gin.Context, flusher http.Flusher, answer string) {
 	runes := []rune(answer)
 	chunkSize := 5
+	rc := http.NewResponseController(c.Writer)
 	for i := 0; i < len(runes); i += chunkSize {
 		select {
 		case <-c.Request.Context().Done():
@@ -253,6 +257,8 @@ func (h *ChatHandler) streamSimulated(c *gin.Context, flusher http.Flusher, answ
 		}
 		writeSSEEvent(c.Writer, sseEvent{Type: "token", Content: string(runes[i:end])})
 		flusher.Flush()
+		// 每次写入后延长写超时，保证长 SSE 流不被 WriteTimeout 截断
+		rc.SetWriteDeadline(time.Now().Add(30 * time.Second))
 		time.Sleep(30 * time.Millisecond)
 	}
 }

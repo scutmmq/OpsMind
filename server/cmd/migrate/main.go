@@ -1,8 +1,15 @@
 // Package main 数据库迁移工具。
+//
+// 从环境变量读取数据库配置（复用 config.LoadConfig），执行 GORM AutoMigrate。
+//
+// 用法：
+//
+//	OPSMIND_DB_HOST=localhost OPSMIND_DB_PASSWORD=xxx go run ./cmd/migrate
 package main
 
 import (
 	"fmt"
+	"log"
 
 	"opsmind/internal/config"
 	"opsmind/internal/database"
@@ -10,22 +17,21 @@ import (
 )
 
 func main() {
-	// TODO: 硬编码数据库密码 opsmind123 — 不安全且与生产配置不一致。
-	// 应从环境变量/命令行参数读取，复用 config.LoadConfig()。
-	cfg := config.DatabaseConfig{
-		Host:     "localhost",
-		Port:     5432,
-		User:     "opsmind",
-		Password: "opsmind123",
-		DBName:   "opsmind_test",
-		SSLMode:  "disable",
-	}
-	db, err := database.Init(cfg)
+	// 从环境变量加载配置，开发/CI 环境自动匹配。
+	cfg, err := config.Load("")
 	if err != nil {
-		panic(err)
+		log.Fatalf("加载配置失败: %v", err)
 	}
+
+	dbCfg := cfg.Database
+	db, err := database.Init(dbCfg)
+	if err != nil {
+		log.Fatalf("数据库连接失败: %v", err)
+	}
+
 	if err := db.AutoMigrate(&model.Role{}, &model.UserRole{}, &model.Menu{}, &model.RoleMenu{}); err != nil {
-		panic(err)
+		log.Fatalf("数据库迁移失败: %v", err)
 	}
-	fmt.Println("Migration completed")
+
+	fmt.Printf("Migration completed (host=%s db=%s)\n", dbCfg.Host, dbCfg.DBName)
 }

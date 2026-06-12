@@ -161,9 +161,7 @@ func main() {
 		Addr:         addr,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 0, // SSE 流式响应无固定超时
-		// TODO: WriteTimeout=0 全局禁用写超时 — SSE 需要但影响所有非流式接口。
-		// 应只对 SSE 路由单独设置超时，或使用 http.ResponseController 按请求控制。
+			WriteTimeout: 60 * time.Second, // SSE 路由内部通过 SetWriteDeadline 续期
 		IdleTimeout:  60 * time.Second,
 	}
 

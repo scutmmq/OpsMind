@@ -47,12 +47,11 @@ func Setup(cfg *config.AppConfig, h *Handlers) *gin.Engine {
 	r := gin.New()
 
 	// 注册全局中间件
-	// TODO: Recovery 应注册在最外层（第一个）以捕获所有中间件的 panic。
-	// 当前顺序 RequestID→CORS→Logger→Recovery 在风格上有违惯例。
+	// Recovery 注册在最外层（第一个）以捕获后续所有中间件的 panic。
+	r.Use(gin.Recovery())
 	r.Use(middleware.RequestID())
 	r.Use(middleware.CORS(parseCORSOrigins(cfg.CORS.AllowOrigins)))
 	r.Use(middleware.Logger())
-	r.Use(gin.Recovery())
 
 	// 健康检查端点（无需认证，供 Docker/K8s 存活探针使用）
 	r.GET("/health", func(c *gin.Context) {
