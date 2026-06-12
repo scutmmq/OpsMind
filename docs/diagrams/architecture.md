@@ -15,7 +15,7 @@ flowchart TB
     subgraph Router["Gin Router :8080"]
         Health["GET /health → 无认证"]
         Public["/api/v1/auth → 无中间件<br/>POST login / POST refresh"]
-        JWTGroup["/api/v1/auth → JWTAuth<br/>POST change-password / POST logout"]
+        JWTGroup["/api/v1/auth → JWTAuth<br/>POST /me/change-password / POST /me/logout"]
         PortalGroup["/api/v1/portal → JWTAuth<br/>chat-sessions / tickets / messages"]
         AdminGroup["/api/v1/admin → JWTAuth + RBAC<br/>tickets / knowledge-bases / users / roles / llm-configs / dashboard / audit-logs"]
     end

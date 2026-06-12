@@ -101,7 +101,7 @@ POST /api/v1/auth/refresh
 ## 3. 修改密码
 
 ```http
-POST /api/v1/auth/change-password
+POST /api/v1/auth/me/change-password
 Authorization: Bearer <token>
 ```
 
@@ -139,7 +139,7 @@ Authorization: Bearer <token>
 ## 4. 登出
 
 ```http
-POST /api/v1/auth/logout
+POST /api/v1/auth/me/logout
 Authorization: Bearer <token>
 ```
 

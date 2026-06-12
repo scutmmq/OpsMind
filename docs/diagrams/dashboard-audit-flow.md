@@ -221,10 +221,10 @@ flowchart TD
     end
     
     subgraph API["Gin REST API"]
-        DS2["GET /admin/dashboard/stats"]
-        DT["GET /admin/dashboard/trends"]
-        AL2["GET /admin/audit-logs"]
-        CFG["GET/PUT /admin/configs/:key"]
+        DS2["GET /api/v1/admin/dashboard/stats"]
+        DT["GET /api/v1/admin/dashboard/trends"]
+        AL2["GET /api/v1/admin/audit-logs"]
+        CFG["GET/PUT /api/v1/admin/configs/:key"]
     end
     
     subgraph Service["Service 层"]

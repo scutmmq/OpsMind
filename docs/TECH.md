@@ -33,7 +33,7 @@ OpsMind 采用**单体分层架构（Modular Monolith）**，按 Handler → Ser
 ### 2.1 Handler 层
 
 - 职责：请求参数解析与校验、调用 Service、格式化统一响应
-- 每个 Handler 对应一个 API 域（Auth / User / Role / Ticket / Knowledge / Chat / LLMConfig / Dashboard / Audit / Config）
+- 每个 Handler 对应一个 API 域（Auth / User / Role / Ticket / Knowledge / Chat / LLMConfig / Dashboard / Audit / Config / Message），共 11 个
 - 共享工具函数：`parsePagination`、`parseID`、`getCurrentUserID`、`handleServiceError`
 
 ### 2.2 Service 层
@@ -105,12 +105,14 @@ OpsMind 采用**单体分层架构（Modular Monolith）**，按 Handler → Ser
 ### 3.3 文章状态机
 
 ```
-草稿(1) → 已提交审核(2) → 审核通过(3) → 已发布(4) → 已停用(0)
-               ↓
-          审核驳回(6)
+草稿(1) → 待审核(2) → 已发布(3) → 已停用(4)
+           ↓
+        驳回(5)
 ```
 
-文档处理状态：`pending → parsing → chunking → embedding → completed`（失败 → `failed`，可重试）
+对应 `model/enums.go`：ArticleStatusDraft=1, ArticleStatusReviewing=2, ArticleStatusPublished=3, ArticleStatusDisabled=4, ArticleStatusRejected=5
+
+文档处理状态：`chunking → embedding → indexing → completed`（失败 → `failed`，可重试）
 
 ## 4. RAG 管道配置
 
@@ -122,7 +124,7 @@ type RAGOptions struct {
     Hybrid       bool  // BM25 混合检索，默认 true
     Rerank       bool  // 重排序，默认 true
     RouteCount   int   // 子查询数，默认 3
-    RerankCount  int   // 进入重排序候选数，默认 10
+    RerankCount  int   // 进入重排序候选数，默认 15 (topK*3)
 }
 ```
 
@@ -142,17 +144,30 @@ type RAGOptions struct {
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `JWT_SECRET` | JWT 签名密钥 | 生产环境必须设置 |
-| `LLM_BASE_URL` | LLM API 地址 | `http://llama-cpp:8080/v1` |
-| `LLM_API_KEY` | API 密钥（OpenAI 需要；llama.cpp 留空） | — |
-| `LLM_MODEL` | LLM 模型名称 | `qwen3-4b` |
-| `LLM_MAX_TOKENS` | 最大生成 Token 数 | 8192 |
-| `EMBEDDING_BASE_URL` | Embedding API 地址（空则回退到 LLM_BASE_URL） | — |
-| `EMBEDDING_MODEL` | Embedding 模型名称 | `bge-m3` |
-| `EMBEDDING_DIMENSION` | 向量维度 | 1024 |
-| `POSTGRES_PASSWORD` | PostgreSQL 密码 | `opsmind_dev` |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO 管理员凭据 | `minioadmin` |
-
+| `OPSMIND_JWT_SECRET` | JWT 签名密钥 | 生产环境必须设置 |
+| `OPSMIND_LLM_BASE_URL` | LLM API 地址 | `http://llama-cpp:8080/v1` |
+| `OPSMIND_LLM_API_KEY` | API 密钥（OpenAI 需要；llama.cpp 留空） | — |
+| `OPSMIND_LLM_MODEL` | LLM 模型名称 | `qwen3-4b` |
+| `OPSMIND_LLM_MAX_TOKENS` | 最大生成 Token 数 | 8192 |
+| `OPSMIND_EMBEDDING_BASE_URL` | Embedding API 地址（空则回退到 LLM_BASE_URL） | — |
+| `OPSMIND_EMBEDDING_MODEL` | Embedding 模型名称 | `bge-m3` |
+| `OPSMIND_EMBEDDING_DIMENSION` | 向量维度 | 1024 |
+| `OPSMIND_DATABASE_PASSWORD` | PostgreSQL 密码 | `opsmind_dev` |
+| `OPSMIND_MINIO_ACCESS_KEY` / `OPSMIND_MINIO_SECRET_KEY` | MinIO 管理员凭据 | `minioadmin` |
+| `OPSMIND_MINIO_ENDPOINT` | MinIO 端点 | `localhost:9000` |
+| `OPSMIND_MINIO_USE_SSL` | MinIO SSL | `false` |
+| `OPSMIND_SERVER_PORT` | 服务端口 | `8080` |
+| `OPSMIND_SERVER_MODE` | 运行模式 | `debug` |
+| `OPSMIND_JWT_ACCESS_EXPIRE` | Access Token 有效期 | `2h` |
+| `OPSMIND_JWT_REFRESH_EXPIRE` | Refresh Token 有效期 | `168h` |
+| `OPSMIND_CORS_ALLOW_ORIGINS` | CORS 允许域名 | `localhost:5173` |
+| `OPSMIND_AI_DEFAULT_TOP_K` | 默认检索 TopK | `5` |
+| `OPSMIND_AI_CONFIDENCE_THRESHOLD` | 置信度阈值 | `0.6` |
+| `OPSMIND_DATABASE_HOST` | PostgreSQL 主机 | `localhost` |
+| `OPSMIND_DATABASE_PORT` | PostgreSQL 端口 | `5432` |
+| `OPSMIND_DATABASE_USER` | PostgreSQL 用户 | `opsmind` |
+| `OPSMIND_DATABASE_NAME` | PostgreSQL 数据库名 | `opsmind` |
+| `OPSMIND_DATABASE_SSLMODE` | PostgreSQL SSL 模式 | `disable` |
 ## 6. 模块接口
 
 ### 6.1 LLMClient
@@ -195,12 +210,39 @@ type VectorStore interface {
 | 10003 | 400 | 参数校验失败 |
 | 10004 | 404 | 资源不存在 |
 | 10005 | 409 | 资源冲突（如账号名重复） |
-| 20001 | 500 | AI 服务不可用 |
-| 20002 | 500 | RAG 服务不可用 |
-| 20003 | 500 | 存储服务不可用 |
+| 10006 | 400 | 用户已被冻结 (ErrAlreadyFrozen) |
+| 10007 | 400 | 用户已处于正常状态 (ErrAlreadyActive) |
+| 20001 | 503 | AI 服务不可用 (ErrAIUnavailable) |
+| 20002 | 503 | RAG 服务不可用 (ErrRAGUnavailable) |
+| 20003 | 503 | 存储服务不可用 (ErrStorageUnavailable) |
 | 99999 | 500 | 未知错误 |
 
-## 8. 项目结构
+## 8. 自动关闭申告 (AutoClose)
+
+`Scheduler` (`service/scheduler.go`) 每小时执行 `TicketAutoCloseJob`：
+
+1. `Scheduler.runAutoCloseLoop` → 每小时触发一次
+2. `Scheduler.RunAutoClose` → 调用 `ticketSvc.AutoClose(olderThan)`
+3. `TicketService.AutoClose(olderThan)` → **Service 层事务编排**：
+   - 调用 `TicketRepo.AutoCloseTickets(olderThan)` 获取待关闭 ticket ID 列表
+   - 通过 `TxManager.Transaction` 在事务中为每个 ticket 创建 `action="auto_close"` 的 `TicketRecord`
+4. `TicketRepo.AutoCloseTickets(olderThan)` → **纯数据操作**：SELECT + 批量 UPDATE status=Closed
+
+关闭条件：`status IN (1,2,3) AND created_at < now - 7 days`
+
+### 8.1 事务管理 (TxManager)
+
+`TxManager` 接口（`service/tx_manager.go`）提供统一的事务抽象：
+
+```go
+type TxManager interface {
+    Transaction(fn func(tx *gorm.DB) error) error
+}
+```
+
+`TicketService` 通过构造函数注入 `TxManager`（而非直接持有 `*gorm.DB`），事务编排由 Service 层完成，Repository 只做纯数据操作。
+
+## 9. 项目结构
 
 ```
 server/

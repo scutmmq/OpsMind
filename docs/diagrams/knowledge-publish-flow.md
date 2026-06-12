@@ -1,8 +1,9 @@
-# 知识文章生命周期
+# 知识发布管道 v2 — 函数级调用链
 
-> 涉及文件：`handler/knowledge.go` → `service/knowledge_service.go` → `rag/chunker.go` / `rag/embedder.go` / `adapter/vector_store.go`
+> 代码基准：`handler/knowledge.go` → `service/knowledge_service.go` → `rag/chunker.go` / `rag/embedder.go` / `adapter/vector_store.go`
+> 更新于 2026-06-12 — EmbeddingConfig 死代码已移除，EmbeddingModel 从 KnowledgeBase 读取
 
-## 1. 完整生命周期（创建→发布→停用）
+## 1. 文章生命周期（创建→审核→发布→停用）
 
 ```mermaid
 sequenceDiagram
@@ -11,123 +12,129 @@ sequenceDiagram
     participant KH as KnowledgeHandler<br/>handler/knowledge.go
     participant KS as KnowledgeService<br/>service/knowledge_service.go
     participant KR as KnowledgeRepo<br/>repository/knowledge_repo.go
-    participant CH as Chunker<br/>rag/chunker.go
-    participant EM as Embedder<br/>rag/embedder.go
-    participant VS as PgvectorStore<br/>adapter/vector_store.go
-    participant EC as EmbeddingClient<br/>adapter/embedding_client.go
     participant DB as PostgreSQL
 
-    Note over A,DB: ====== 1. 创建文章 (草稿) ======
-    A->>KH: POST /api/v1/admin/knowledge-bases/:kb_id/articles<br/>{title, content, source_type, tags}
-    KH->>KH: c.ShouldBindJSON(&CreateArticleRequest)
-    KH->>KH: getCurrentUserID(c) → userID
-    KH->>KS: KnowledgeService.CreateArticle(req, userID)
-    KS->>KR: KnowledgeRepo.FindKBByID(kbID) → 校验知识库存在
+    Note over A,DB: ====== 1. 创建知识库 ======
+    A->>KH: POST /api/v1/admin/knowledge-bases<br/>{name, description}
+    KH->>KH: getCurrentUserID(c) → (userID, bool)
+    KH->>KS: CreateKB(req, userID)
+    KS->>KR: CreateKB(&KnowledgeBase{Name, Description, CreatedBy})
+    KR->>DB: INSERT INTO knowledge_bases
+    DB-->>KR: kb.ID
+    KH-->>A: 200
+
+    Note over A,DB: ====== 2. 创建文章 (草稿) ======
+    A->>KH: POST /api/v1/admin/knowledge-bases/:kb_id/articles<br/>{question, answer, category}
+    KH->>KH: parseID(c, "kb_id")
+    KH->>KS: CreateArticle(req, userID)
+
+    KS->>KR: FindKBByID(kbID) → 校验知识库存在
     KR->>DB: SELECT FROM knowledge_bases WHERE id=?
-    DB-->>KR: KnowledgeBase
-    KS->>KR: KnowledgeRepo.CreateArticle(&KnowledgeArticle{<br/>  KBID, Question:title, Answer:content, Status:1(草稿)})
+    KS->>KR: CreateArticle(&KnowledgeArticle{<br/>KBID, Question, Answer, Status: Draft=1})
     KR->>DB: INSERT INTO knowledge_articles
-    DB-->>KR: article.ID
-    KS-->>KH: nil
-    KH-->>A: 200 success
+    KS-->>KH: *KnowledgeArticle
 
-    Note over A,DB: ====== 2. 提交审核 (草稿→待审核) ======
-    A->>KH: POST /api/v1/admin/articles/:id/submit-review
-    KH->>KS: KnowledgeService.SubmitReview(id, userID)
-    KS->>KR: KnowledgeRepo.FindArticleByID(id)
-    KR->>DB: SELECT FROM knowledge_articles WHERE id=?
-    DB-->>KR: Article{Status:1}
-    KS->>KS: 校验 article.Status == 1 (草稿)
-    KS->>KR: KnowledgeRepo.UpdateArticleStatus(id, 2)
-    KR->>DB: UPDATE knowledge_articles SET status=2
-    KS-->>KH: nil
-    KH-->>A: 200 success
+    Note over A,DB: ====== 3. 提交审核 ======
+    A->>KH: PUT .../articles/:id/submit
+    KH->>KS: SubmitForReview(articleID)
+    KS->>KS: 状态校验: Status == Draft → Status = Reviewing(2)
+    KS->>KR: UpdateArticleStatus(articleID, ArticleStatusReviewing)
+    KR->>DB: UPDATE knowledge_articles SET status=2 WHERE id=?
 
-    Note over R,DB: ====== 3. 审核 (待审核→已通过/驳回) ======
-    R->>KH: POST /api/v1/admin/articles/:id/review<br/>{approved: true/false, review_comment}
-    KH->>KS: KnowledgeService.Review(id, reviewerID, req)
-    KS->>KR: KnowledgeRepo.FindArticleByID(id)
-    KR->>DB: SELECT FROM knowledge_articles WHERE id=?
-    DB-->>KR: Article{Status:2, CreatedBy}
-    KS->>KS: 校验 article.Status == 2 (待审核)
-    KS->>KS: 校验 article.CreatedBy != reviewerID (不能自审)
+    Note over A,DB: ====== 4. 审核通过 ======
+    R->>KH: PUT .../articles/:id/approve
+    KH->>KS: Approve(articleID)
+    KS->>KS: 状态校验: Status == Reviewing → Status = Published(3)
+    KS->>KR: UpdateArticleStatus(articleID, ArticleStatusPublished)
 
-    alt approved=true → 已通过(3)
-        KS->>KR: KnowledgeRepo.UpdateArticle(article)
-        KR->>DB: UPDATE knowledge_articles SET status=3, reviewed_by=?
-    else approved=false → 驳回(6)
-        KS->>KS: 校验 review_comment 非空
-        KS->>KR: KnowledgeRepo.UpdateArticle(article)
-        KR->>DB: UPDATE knowledge_articles SET status=6, review_comment=?
-    end
-    KS-->>KH: nil
-    KH-->>R: 200 success
+    Note over A,DB: ====== 5. 驳回 ======
+    R->>KH: PUT .../articles/:id/reject
+    KH->>KS: Reject(articleID)
+    KS->>KS: 状态校验: Status == Reviewing → Status = Rejected(5)
+    KS->>KR: UpdateArticleStatus(articleID, ArticleStatusRejected)
 
-    Note over A,DB: ====== 4. 发布 (已通过→已发布 + pgvector 写入) ======
-    A->>KH: POST /api/v1/admin/articles/:id/publish
-    KH->>KS: KnowledgeService.Publish(id, publisherID)
+    Note over A,DB: ====== 6. 停用 ======
+    A->>KH: PUT .../articles/:id/disable
+    KH->>KS: Disable(articleID)
+    KS->>KS: Status → ArticleStatusDisabled(4)
+    KS->>KR: UpdateArticleStatus(articleID, ArticleStatusDisabled)
 
-    KS->>KR: KnowledgeRepo.FindArticleByID(id)
-    KR->>DB: SELECT FROM knowledge_articles WHERE id=?
-    DB-->>KR: Article{Status:3, Answer:content}
-    KS->>KS: 校验 article.Status == 3 (已通过)
-
-    Note over KS,EM: 管道：分块 → embedding → 写入
-    KS->>CH: Chunker.Split(article.Answer)
-    CH->>CH: RecursiveCharacterTextSplitter<br/>(chunk_size=1000, overlap=200)
-    CH-->>KS: []string{"分块1", "分块2", ...}
-
-    KS->>EM: Embedder.Embed(ctx, chunks)
-    EM->>EC: EmbeddingClient.CreateEmbeddings(ctx, EmbeddingRequest{<br/>  Model, Input: chunks})
-    EC-->>EM: EmbeddingResponse{Data: [{Embedding: []float32}]}
-    EM-->>KS: ([][]float32, dimension, nil)
-
-    KS->>VS: VectorStore.DeleteByArticle(ctx, id)
-    VS->>DB: DELETE FROM knowledge_chunks WHERE article_id=?
-    DB-->>VS: ok
-
-    KS->>VS: VectorStore.BatchInsert(ctx, []VectorChunk{<br/>  {ArticleID, KBID, Content, ChunkIndex, Embedding, Model, Dimension}})
-    VS->>DB: INSERT INTO knowledge_chunks (...) VALUES (...)
-    DB-->>VS: ok
-
-    KS->>KR: KnowledgeRepo.UpdateArticle(article)
-    KR->>DB: UPDATE knowledge_articles SET status=4, published_by=?
-    KS-->>KH: nil
-    KH-->>A: 200 success
-
-    Note over A,DB: ====== 5. 停用 (已发布→已停用 + 向量删除) ======
-    A->>KH: POST /api/v1/admin/articles/:id/disable
-    KH->>KS: KnowledgeService.Disable(id)
-    KS->>KR: KnowledgeRepo.FindArticleByID(id)
-    KR->>DB: SELECT FROM knowledge_articles
-    DB-->>KR: Article{Status:4}
-    KS->>VS: VectorStore.DeleteByArticle(ctx, id)
-    VS->>DB: DELETE FROM knowledge_chunks WHERE article_id=?
-    KS->>KR: KnowledgeRepo.UpdateArticle(article)
-    KR->>DB: UPDATE knowledge_articles SET status=0
-    KS-->>KH: nil
-    KH-->>A: 200 success
-
-    Note over A,DB: ====== 6. 启用 (已停用→草稿) ======
-    A->>KH: POST /api/v1/admin/articles/:id/enable
-    KH->>KS: KnowledgeService.Enable(id)
-    KS->>KS: 校验 article.Status == 0
-    KS->>KR: KnowledgeRepo.UpdateArticle(article)
-    KR->>DB: UPDATE knowledge_articles SET status=1
-    KS-->>KH: nil
+    Note over A,DB: ====== 7. 重新启用 ======
+    A->>KH: PUT .../articles/:id/enable
+    KH->>KS: Enable(articleID)
+    KS->>KS: 状态校验: Status == ArticleStatusDisabled(4) 才可启用
+    KS->>KR: UpdateArticleStatus(articleID, Draft=1)
 ```
 
-## 2. 状态机总览
+## 2. 发布管道（pgvector 向量写入）
+
+```mermaid
+sequenceDiagram
+    actor A as 管理员
+    participant KH as KnowledgeHandler.Publish<br/>handler/knowledge.go
+    participant KS as KnowledgeService.Publish<br/>service/knowledge_service.go:269
+    participant KR as KnowledgeRepo<br/>repository/knowledge_repo.go
+    participant CH as Chunker.Split<br/>rag/chunker.go:37
+    participant EM as Embedder.Embed<br/>rag/embedder.go:56
+    participant EC as EmbeddingClient.CreateEmbeddings<br/>adapter/embedding_client.go:106
+    participant VS as VectorStore.BatchInsert<br/>adapter/vector_store.go
+    participant DB as PostgreSQL(pgvector)
+
+    A->>KH: POST /api/v1/admin/knowledge-bases/:id/articles/:aid/publish
+    KH->>KH: parseID(c, "id") + parseID(c, "aid")
+    KH->>KS: Publish(articleID, kbID)
+
+    Note over KS: === 1. 获取文章和知识库 ===
+    KS->>KR: FindArticleByID(articleID)
+    KR->>DB: SELECT * FROM knowledge_articles WHERE id=?
+    DB-->>KR: *KnowledgeArticle{Status, Answer}
+    KS->>KR: FindKBByID(kbID)
+    KR->>DB: SELECT * FROM knowledge_bases WHERE id=?<br/>.Preload("KnowledgeBase")
+    DB-->>KR: *KnowledgeBase{EmbeddingModel, VectorDimension}
+
+    Note over KS,DB: === 2. 分块 ===
+    KS->>KS: 校验: Status == Published(3) 或 Reviewing(2)
+    KS->>KS: embeddingModel = article.KnowledgeBase.EmbeddingModel
+    Note over KS: 注意：从 KB 读取，不再硬编码 "bge-m3"
+    KS->>CH: Split(article.Answer)
+    CH->>CH: chunkSize > 0 校验; 默认 1000
+    CH->>CH: chunkOverlap > 0 校验
+    CH-->>KS: []string chunks
+
+    Note over KS,DB: === 3. Embedding ===
+    KS->>EM: Embed(ctx, chunks)
+    EM->>EC: CreateEmbeddings(ctx, EmbeddingRequest{Model: embeddingModel, Input: chunks})
+    EC->>EC: doHTTPRequest(ctx, baseURL, apiKey, "/v1/embeddings", body)
+    Note over EC: 429/503 指数退避重试 (maxRetries=3)
+    EC-->>EM: EmbeddingResponse{Embeddings [][]float32, Dimension}
+    EM-->>KS: [][]float32 vectors
+
+    Note over KS,DB: === 4. 写入 pgvector ===
+    KS->>VS: BatchInsert(ctx, chunkRecords)
+    VS->>DB: INSERT INTO knowledge_chunks<br/>(article_id, kb_id, content, chunk_index, embedding)<br/>VALUES ($1, $2, $3, $4, $5::halfvec)
+    DB-->>VS: ok
+
+    Note over KS: === 5. 更新文章状态 ===
+    KS->>KR: UpdateArticleStatus(articleID, ArticleStatusPublished)
+    KR->>DB: UPDATE knowledge_articles SET status=3 WHERE id=?
+    KS-->>KH: nil
+    KH-->>A: 200
+```
+
+## 3. 文章状态机
 
 ```mermaid
 stateDiagram-v2
-    [*] --> 草稿 : CreateArticle()
-    草稿 --> 已提交审核 : SubmitReview()
-    已提交审核 --> 审核通过 : Review(approved=true)\n审核人≠创建人
-    已提交审核 --> 审核驳回 : Review(approved=false)\n须填写审核意见
-    审核通过 --> 已发布 : Publish()\nChunker.Split → Embedder.Embed\n→ VectorStore.BatchInsert
-    审核驳回 --> 草稿 : UpdateArticle()\n修改后自动回退
-    已发布 --> 已停用 : Disable()\nVectorStore.DeleteByArticle
-    已停用 --> 草稿 : Enable()
-    已发布 --> 草稿 : UpdateArticle()\n修改后自动回退
+    [*] --> Draft : CreateArticle()
+
+    Draft --> Reviewing : SubmitForReview()
+    Reviewing --> Published : Approve()
+    Reviewing --> Rejected : Reject()
+    Published --> Disabled : Disable()<br/>(status = ArticleStatusDisabled=4)
+    Disabled --> Draft : Enable()<br/>(校验 Status==4 才可启用)
+
+    note right of Published
+        Publish() 执行分块→Embedding→pgvector
+        embeddingModel 从 KB.EmbeddingModel 读取
+    end note
 ```

@@ -1,7 +1,7 @@
 // Package repository 提供知识库的数据访问层。
 //
 // KnowledgeRepo 封装 knowledge_bases、knowledge_articles、knowledge_chunks、
-// embedding_configs 四张表的 CRUD 操作，供 KnowledgeService 调用。
+// knowledge_chunks 三张表的 CRUD 操作，供 KnowledgeService 调用。
 // 为什么独立于 UserRepo：知识库相关表的查询模式不同（按 kb_id 过滤分页、
 // 同步状态批量更新、预加载关联表），独立 Repo 更利于职责聚焦。
 package repository
