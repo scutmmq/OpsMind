@@ -14,6 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	minio "github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
+
 	"opsmind/internal/adapter"
 	"opsmind/internal/config"
 	"opsmind/internal/database"
@@ -99,6 +102,24 @@ func main() {
 		slog.Info("pgvector VectorStore 已连接")
 	}
 
+	// MinIO 对象存储
+	var storageClient adapter.StorageClient
+	minioEndpoint := cfg.MinIO.Endpoint
+	if minioEndpoint == "" {
+		slog.Warn("MinIO 未配置，文档上传将使用降级模式（纯文本）")
+	} else {
+		minioClient, err := minio.New(minioEndpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(cfg.MinIO.AccessKey, cfg.MinIO.SecretKey, ""),
+			Secure: cfg.MinIO.UseSSL,
+		})
+		if err != nil {
+			slog.Error("MinIO 客户端创建失败，文档上传将降级", "error", err)
+		} else {
+			storageClient = adapter.NewMinIOClient(minioClient, "opsmind-attachments", "opsmind-documents")
+			slog.Info("MinIO 对象存储已连接", "endpoint", minioEndpoint)
+		}
+	}
+
 	// 5. 初始化 Repository 层
 	configRepo := repository.NewConfigRepo(db)
 	userRepo := repository.NewUserRepo(db)
@@ -143,10 +164,10 @@ func main() {
 	pipeline := rag.NewPipeline(vectorRetriever, bm25Retriever, llmClient, embedder)
 
 	// 文档异步处理器（goroutine pool：解析→分块→embedding→pgvector 写入）
-	processor := rag.NewProcessor(docParser, chunker, embedder, vectorStore, 2)
+	processor := rag.NewProcessor(docParser, chunker, embedder, vectorStore, storageClient, 2)
 
 	// KnowledgeService（CRUD + pgvector 管道 + 文档上传）
-	knowledgeService := service.NewKnowledgeService(knowledgeRepo, chunker, embedder, vectorStore, docParser, processor)
+	knowledgeService := service.NewKnowledgeService(knowledgeRepo, chunker, embedder, vectorStore, docParser, processor, storageClient)
 	slog.Info("KnowledgeService 已初始化（含 Chunker + Processor）")
 
 	// ChatService（自建 Pipeline + LLMClient）

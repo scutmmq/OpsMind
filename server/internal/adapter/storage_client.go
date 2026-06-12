@@ -36,6 +36,12 @@ type StorageClient interface {
 	// key 建议格式："{resource_type}/{timestamp}_{filename}"，如 "tickets/20260610_attach.pdf"
 	Upload(ctx context.Context, bucket, key string, reader io.Reader, size int64, contentType string) (string, error)
 
+	// Download 从指定 bucket 下载对象。
+	//
+	// 返回的 io.ReadCloser 由调用方负责关闭。
+	// 对象不存在时返回错误。
+	Download(ctx context.Context, bucket, key string) (io.ReadCloser, error)
+
 	// GetPresignedURL 获取对象的预签名下载 URL，expiry 为有效期。
 	//
 	// 预签名 URL 可直接通过 HTTP GET 访问，无需认证。
@@ -112,6 +118,22 @@ func (c *MinIOClient) Upload(ctx context.Context, bucket, key string, reader io.
 	}
 
 	return key, nil
+}
+
+// =============================================================================
+// Download
+// =============================================================================
+
+// Download 从 MinIO 下载对象。
+//
+// 使用 GetObject API，返回 io.ReadCloser。
+// 调用方负责在读取完毕后调用 Close() 释放连接。
+func (c *MinIOClient) Download(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
+	obj, err := c.client.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("下载文件失败 [%s/%s]: %w", bucket, key, err)
+	}
+	return obj, nil
 }
 
 // =============================================================================

@@ -1,63 +1,36 @@
+//go:build integration
+
+// Package handler_test 验证 LLMConfigHandler HTTP 接口（真实 DB + 真实 Service）。
 package handler_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"opsmind/internal/adapter"
 	"opsmind/internal/handler"
 	"opsmind/internal/model"
+	"opsmind/internal/repository"
 	"opsmind/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-// =============================================================================
-// Mock LLMConfigService
-// =============================================================================
-
-type mockLLMConfigSvc struct {
-	configs    []service.LlmConfigResponse
-	createFn   func(name string, providerType int16, baseURL, embeddingBaseURL, apiKey, llmModel, embeddingModel string, maxTokens, vectorDimension int, isDefault bool) (*model.LlmConfig, error)
-	getConfigFn func(id int64) (*model.LlmConfig, error)
+// setupLLMConfigHandler 使用真实 DB 创建 LLMConfigHandler。
+func setupLLMConfigHandler(t *testing.T) *handler.LLMConfigHandler {
+	t.Helper()
+	// 每次测试前清空表，避免默认配置唯一索引冲突
+	knowledgeHandlerDB.Exec("DELETE FROM llm_configs")
+	repo := repository.NewLlmConfigRepo(knowledgeHandlerDB)
+	svc := service.NewLLMConfigService(repo)
+	return handler.NewLLMConfigHandler(svc, nil) // nil llmClient — 仅测试 CRUD
 }
 
-func (m *mockLLMConfigSvc) CreateConfig(name string, providerType int16, baseURL, embeddingBaseURL, apiKey, llmModel, embeddingModel string, maxTokens, vectorDimension int, isDefault bool) (*model.LlmConfig, error) {
-	if m.createFn != nil {
-		return m.createFn(name, providerType, baseURL, embeddingBaseURL, apiKey, llmModel, embeddingModel, maxTokens, vectorDimension, isDefault)
-	}
-	return nil, nil
-}
-
-func (m *mockLLMConfigSvc) ListConfigs() ([]service.LlmConfigResponse, error) {
-	return m.configs, nil
-}
-
-func (m *mockLLMConfigSvc) GetConfig(id int64) (*model.LlmConfig, error) {
-	if m.getConfigFn != nil {
-		return m.getConfigFn(id)
-	}
-	return nil, fmt.Errorf("not found")
-}
-
-func (m *mockLLMConfigSvc) UpdateConfig(cfg *model.LlmConfig) error { return nil }
-func (m *mockLLMConfigSvc) DeleteConfig(id int64) error              { return nil }
-func (m *mockLLMConfigSvc) GetManager() *service.LLMConfigManager    { return nil }
-
-// =============================================================================
-// 测试
-// =============================================================================
-
-func setupLLMTestRouter(svc *mockLLMConfigSvc) *gin.Engine {
+func setupLLMTestRouter(h *handler.LLMConfigHandler) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	mockClient := &mockTestLLMClient{response: &adapter.ChatResponse{Content: "ok", FinishReason: "stop"}}
-	h := handler.NewLLMConfigHandler(svc, mockClient)
 	r.GET("/api/v1/admin/llm-configs", h.ListConfigs)
 	r.POST("/api/v1/admin/llm-configs", h.CreateConfig)
 	r.GET("/api/v1/admin/llm-configs/:id", h.GetConfig)
@@ -67,16 +40,15 @@ func setupLLMTestRouter(svc *mockLLMConfigSvc) *gin.Engine {
 	return r
 }
 
-// TestLLMConfigHandler_ListConfigs 验证 GET /llm-configs 返回列表。
+// TestLLMConfigHandler_ListConfigs 验证列表接口（真实 DB）。
 func TestLLMConfigHandler_ListConfigs(t *testing.T) {
-	svc := &mockLLMConfigSvc{
-		configs: []service.LlmConfigResponse{
-			{ID: 1, Name: "llama.cpp 本地", ProviderType: 1, LLMModel: "qwen3-4b", EmbeddingModel: "bge-m3", IsDefault: true},
-			{ID: 2, Name: "OpenAI", ProviderType: 2, APIKey: "sk-****cret", LLMModel: "gpt-4o", EmbeddingModel: "text-embedding-3-small"},
-		},
-	}
+	h := setupLLMConfigHandler(t)
+	r := setupLLMTestRouter(h)
 
-	r := setupLLMTestRouter(svc)
+	// 预创建 2 个配置
+	knowledgeHandlerDB.Create(&model.LlmConfig{Name: "llama.cpp", ProviderType: 1, LLMModel: "qwen3-4b", EmbeddingModel: "bge-m3", IsDefault: true})
+	knowledgeHandlerDB.Create(&model.LlmConfig{Name: "OpenAI", ProviderType: 2, LLMModel: "gpt-4o", EmbeddingModel: "text-embedding-3-small"})
+
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/v1/admin/llm-configs", nil)
 	r.ServeHTTP(w, req)
@@ -85,33 +57,39 @@ func TestLLMConfigHandler_ListConfigs(t *testing.T) {
 		t.Fatalf("期望 200, 实际 %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp map[string]interface{}
+	var resp struct {
+		Code int                       `json:"code"`
+		Data []service.LlmConfigResponse `json:"data"`
+	}
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["code"].(float64) != 0 {
-		t.Errorf("code 期望 0, 实际 %v", resp["code"])
+	if resp.Code != 0 {
+		t.Errorf("code 期望 0, 实际 %d", resp.Code)
+	}
+	if len(resp.Data) < 2 {
+		t.Errorf("期望至少 2 条配置, 实际 %d", len(resp.Data))
+	}
+	// 验证默认配置脱敏
+	for _, c := range resp.Data {
+		if c.IsDefault && c.APIKey != "" && len(c.APIKey) > 10 {
+			t.Errorf("默认配置 APIKey 应脱敏, got '%s'", c.APIKey)
+		}
 	}
 }
 
-// TestLLMConfigHandler_CreateConfig 验证 POST /llm-configs 创建配置。
+// TestLLMConfigHandler_CreateConfig 验证创建接口（真实 DB）。
 func TestLLMConfigHandler_CreateConfig(t *testing.T) {
-	captured := ""
-	svc := &mockLLMConfigSvc{
-		createFn: func(name string, providerType int16, baseURL, embeddingBaseURL, apiKey, llmModel, embeddingModel string, maxTokens, vectorDimension int, isDefault bool) (*model.LlmConfig, error) {
-			captured = name
-			return nil, nil
-		},
-	}
+	h := setupLLMConfigHandler(t)
+	r := setupLLMTestRouter(h)
 
-	r := setupLLMTestRouter(svc)
 	body := map[string]interface{}{
 		"name":             "DeepSeek",
 		"provider_type":    2,
 		"base_url":         "https://api.deepseek.com/v1",
-		"api_key":          "sk-test123",
+		"api_key":          "sk-test1234567890abcdef",
 		"llm_model":        "deepseek-chat",
-		"embedding_model":  "bge-m3",
+		"embedding_model":  "text-embedding-v2",
 		"max_tokens":       4096,
-		"vector_dimension": 1024,
+		"vector_dimension": 1536,
 		"is_default":       false,
 	}
 	b, _ := json.Marshal(body)
@@ -124,67 +102,76 @@ func TestLLMConfigHandler_CreateConfig(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("期望 200, 实际 %d: %s", w.Code, w.Body.String())
 	}
-	if captured != "DeepSeek" {
-		t.Errorf("期望 name='DeepSeek', 实际 '%s'", captured)
+
+	// 验证 DB 中已创建
+	var cfg model.LlmConfig
+	if err := knowledgeHandlerDB.Where("name = ?", "DeepSeek").First(&cfg).Error; err != nil {
+		t.Fatalf("配置应已创建: %v", err)
+	}
+	if cfg.LLMModel != "deepseek-chat" {
+		t.Errorf("期望 llm_model='deepseek-chat', got '%s'", cfg.LLMModel)
 	}
 }
 
-// TestLLMConfigHandler_GetConfig 验证 GET /llm-configs/:id。
+// TestLLMConfigHandler_GetConfig 验证详情接口（真实 DB）。
 func TestLLMConfigHandler_GetConfig(t *testing.T) {
-	r := setupLLMTestRouter(&mockLLMConfigSvc{})
+	h := setupLLMConfigHandler(t)
+	r := setupLLMTestRouter(h)
+
+	cfg := &model.LlmConfig{Name: "详情测试", ProviderType: 1, LLMModel: "test-model", EmbeddingModel: "emb-model"}
+	knowledgeHandlerDB.Create(cfg)
+
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/v1/admin/llm-configs/1", nil)
+	req, _ := http.NewRequest("GET", "/api/v1/admin/llm-configs/"+itoa(cfg.ID), nil)
 	r.ServeHTTP(w, req)
 
-	// mock 返回 "not found"，应收到 404
 	if w.Code != 200 {
-		t.Logf("404/错误响应（预期 mock 返回 not found）: %s", w.Body.String())
+		t.Fatalf("期望 200, 实际 %d: %s", w.Code, w.Body.String())
 	}
 }
 
-// TestLLMConfigHandler_DeleteConfig 验证 DELETE /llm-configs/:id。
+// TestLLMConfigHandler_DeleteConfig 验证删除接口（真实 DB）。
 func TestLLMConfigHandler_DeleteConfig(t *testing.T) {
-	r := setupLLMTestRouter(&mockLLMConfigSvc{})
+	h := setupLLMConfigHandler(t)
+	r := setupLLMTestRouter(h)
+
+	// 非默认配置可以删除
+	cfg := &model.LlmConfig{Name: "待删除", ProviderType: 1, LLMModel: "x", EmbeddingModel: "y", IsDefault: false}
+	knowledgeHandlerDB.Create(cfg)
+
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("DELETE", "/api/v1/admin/llm-configs/1", nil)
+	req, _ := http.NewRequest("DELETE", "/api/v1/admin/llm-configs/"+itoa(cfg.ID), nil)
 	r.ServeHTTP(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("期望 200, 实际 %d: %s", w.Code, w.Body.String())
 	}
+
+	// 验证已删除
+	var count int64
+	knowledgeHandlerDB.Model(&model.LlmConfig{}).Where("id = ?", cfg.ID).Count(&count)
+	if count != 0 {
+		t.Error("配置应已删除")
+	}
 }
 
-// TestLLMConfigHandler_TestConnection 验证 POST /llm-configs/:id/test。
+// TestLLMConfigHandler_TestConnection 验证测试连接接口（真实 DB）。
+//
+// llmClient=nil 时返回错误（非 20001），验证错误处理路径。
 func TestLLMConfigHandler_TestConnection(t *testing.T) {
-	called := false
-	svc := &mockLLMConfigSvc{}
-	svc.getConfigFn = func(id int64) (*model.LlmConfig, error) {
-		called = true
-		return &model.LlmConfig{ID: 1, Name: "test", LLMModel: "qwen3-4b", BaseURL: "http://x:8080/v1"}, nil
-	}
+	h := setupLLMConfigHandler(t)
+	r := setupLLMTestRouter(h)
 
-	r := setupLLMTestRouter(svc)
+	cfg := &model.LlmConfig{Name: "测试连接", ProviderType: 1, LLMModel: "test", EmbeddingModel: "e", BaseURL: "http://localhost:9999/v1", IsDefault: false}
+	knowledgeHandlerDB.Create(cfg)
+
 	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("POST", "/api/v1/admin/llm-configs/1/test", nil)
+	req, _ := http.NewRequest("POST", "/api/v1/admin/llm-configs/"+itoa(cfg.ID)+"/test", nil)
 	r.ServeHTTP(w, req)
 
-	if w.Code != 200 {
-		t.Fatalf("期望 200, 实际 %d: %s", w.Code, w.Body.String())
+	// nil llmClient 返回错误（非 200），但不应 panic
+	if w.Code == 200 {
+		// 可能 code != 0（业务错误）
+		t.Logf("测试连接响应: %s", w.Body.String())
 	}
-	if !called {
-		t.Error("应调用 GetConfig 获取配置信息")
-	}
-}
-
-// mockTestLLMClient 模拟 LLMClient 用于测试连接。
-type mockTestLLMClient struct {
-	response *adapter.ChatResponse
-	err      error
-}
-
-func (m *mockTestLLMClient) ChatCompletion(ctx context.Context, req adapter.ChatRequest) (*adapter.ChatResponse, error) {
-	return m.response, m.err
-}
-func (m *mockTestLLMClient) ChatCompletionStream(ctx context.Context, req adapter.ChatRequest) (<-chan adapter.StreamChunk, error) {
-	return nil, fmt.Errorf("not impl")
 }

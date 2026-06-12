@@ -15,6 +15,7 @@ package rag
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"opsmind/internal/adapter"
@@ -25,11 +26,18 @@ import (
 // =============================================================================
 
 // ProcessTask 单个文档处理任务。
+//
+// 支持两种来源：
+//   - MinIO 路径：设置 Bucket/Key/FileType，worker 自动下载并解析
+//   - 纯文本：设置 Content，worker 直接分块（手动创建的文章）
 type ProcessTask struct {
-	ArticleID      int64                                     `json:"article_id"`
-	KBID           int64                                     `json:"kb_id"`
-	Content        string                                    `json:"content"`         // 文档原始内容（已从 MinIO 下载）
-	OnStatusChange func(articleID int64, status, errMsg string) `json:"-"`           // 状态变更回调
+	ArticleID      int64                                          `json:"article_id"`
+	KBID           int64                                          `json:"kb_id"`
+	Content        string                                         `json:"content"`  // 纯文本内容（与 MinIO 路径二选一）
+	Bucket         string                                         `json:"bucket"`   // MinIO bucket（如 opsmind-documents）
+	Key            string                                         `json:"key"`      // MinIO object key
+	FileType       string                                         `json:"file_type"` // 文件类型扩展名（用于选择解析器）
+	OnStatusChange func(articleID int64, status, errMsg string) `json:"-"`        // 状态变更回调
 }
 
 // =============================================================================
@@ -42,6 +50,7 @@ type Processor struct {
 	chunker  *Chunker
 	embedder *Embedder
 	store    adapter.VectorStore
+	storage  adapter.StorageClient // MinIO 对象存储（nil 时 MinIO 路径任务降级为纯文本）
 
 	taskCh   chan ProcessTask
 	poolSize int
@@ -52,10 +61,9 @@ type Processor struct {
 
 // NewProcessor 创建文档处理器实例。
 //
+// storage 可以为 nil（MinIO 不可用时自动降级到 Content 模式）。
 // poolSize 为 worker goroutine 数量，建议 2-4。
-func NewProcessor(parser *DocParser, chunker *Chunker, embedder *Embedder, store adapter.VectorStore, poolSize int) *Processor {
-	// TODO(rag/processor): 构造时校验 parser/chunker/embedder/store 非 nil。
-	// 现在 worker 到 processTask 才会 panic，问题会以后台 goroutine 崩溃形式出现。
+func NewProcessor(parser *DocParser, chunker *Chunker, embedder *Embedder, store adapter.VectorStore, storage adapter.StorageClient, poolSize int) *Processor {
 	if poolSize <= 0 {
 		poolSize = 2
 	}
@@ -65,13 +73,13 @@ func NewProcessor(parser *DocParser, chunker *Chunker, embedder *Embedder, store
 		chunker:  chunker,
 		embedder: embedder,
 		store:    store,
-		taskCh:   make(chan ProcessTask, 100), // 缓冲队列
+		storage:  storage,
+		taskCh:   make(chan ProcessTask, 100),
 		poolSize: poolSize,
 		ctx:      ctx,
 		cancel:   cancel,
 	}
 
-	// 启动 worker pool
 	for i := 0; i < poolSize; i++ {
 		p.wg.Add(1)
 		go p.worker(i)
@@ -123,15 +131,55 @@ func (p *Processor) worker(id int) {
 }
 
 // processTask 处理单个文档的完整流程。
+//
+// 支持两种模式：
+//   - MinIO 路径模式：从 MinIO 下载原始文件 → 解析 → 分块 → embedding → pgvector
+//   - 纯文本模式：直接对 Content 分块（手动创建的文章）
 func (p *Processor) processTask(task ProcessTask) {
 	ctx := p.ctx
 	articleID := task.ArticleID
-	// TODO(rag/processor): ProcessTask.Content 已经是解析后的文本，parser 字段未使用。
-	// 如果目标是异步解析 MinIO 文件，task 应携带 bucket/key/fileType 并在 worker 中调用 parser。
 
-	// 阶段 1: 分块
+	var content string
+	p.updateStatus(task, "parsing", "")
+	if task.Bucket != "" && task.Key != "" {
+		// MinIO 路径模式：下载原始文件并解析
+		if p.storage == nil {
+			p.updateStatus(task, "failed", "StorageClient 未初始化，无法下载 MinIO 文件")
+			return
+		}
+		reader, err := p.storage.Download(ctx, task.Bucket, task.Key)
+		if err != nil {
+			p.updateStatus(task, "failed", fmt.Sprintf("从 MinIO 下载文件失败: %v", err))
+			return
+		}
+		defer reader.Close()
+
+		fileType := task.FileType
+		if fileType == "" {
+			// 从 key 后缀推断文件类型
+			if idx := strings.LastIndex(task.Key, "."); idx >= 0 {
+				fileType = task.Key[idx+1:]
+			}
+		}
+
+		parsed, err := p.parser.Parse(reader, fileType)
+		if err != nil {
+			p.updateStatus(task, "failed", fmt.Sprintf("文档解析失败: %v", err))
+			return
+		}
+		if strings.TrimSpace(parsed) == "" {
+			p.updateStatus(task, "failed", "文档内容为空")
+			return
+		}
+		content = parsed
+	} else {
+		// 纯文本模式：直接使用 Content
+		content = task.Content
+	}
+
+	// 阶段 2: 分块
 	p.updateStatus(task, "chunking", "")
-	chunks := p.chunker.Split(task.Content)
+	chunks := p.chunker.Split(content)
 	if len(chunks) == 0 {
 		p.updateStatus(task, "failed", "分块结果为空")
 		return

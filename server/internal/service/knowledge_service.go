@@ -63,15 +63,14 @@ type KnowledgeService struct {
 	store     adapter.VectorStore
 	docParser knowledgeDocParser
 	processor *rag.Processor
+	storage   adapter.StorageClient // MinIO 文档对象存储
 }
 
 // NewKnowledgeService 创建 KnowledgeService 实例。
 //
 // repo/chunker/embedder/store/docParser/processor 可以为 nil（测试或部分功能不需要时）。
 // 直接使用具体接口类型，编译期校验传入类型。
-func NewKnowledgeService(repo knowledgeRepo, chunker knowledgeChunker, embedder knowledgeEmbedder, store adapter.VectorStore, docParser knowledgeDocParser, processor *rag.Processor) *KnowledgeService {
-	// TODO(service/knowledge): 明确哪些依赖在生产路径必须非 nil，哪些仅测试可 nil。
-	// 当前 Publish/Upload/Retry 到运行时才发现依赖缺失，启动期无法暴露装配错误。
+func NewKnowledgeService(repo knowledgeRepo, chunker knowledgeChunker, embedder knowledgeEmbedder, store adapter.VectorStore, docParser knowledgeDocParser, processor *rag.Processor, storage adapter.StorageClient) *KnowledgeService {
 	return &KnowledgeService{
 		repo:      repo,
 		chunker:   chunker,
@@ -79,6 +78,7 @@ func NewKnowledgeService(repo knowledgeRepo, chunker knowledgeChunker, embedder 
 		store:     store,
 		docParser: docParser,
 		processor: processor,
+		storage:   storage,
 	}
 }
 
@@ -459,58 +459,91 @@ func (s *KnowledgeService) GetArticleDetail(id int64) (*response.ArticleDetailRe
 //
 // fileSize 用于大小上限校验（最大 50MB），fileType 用于格式白名单校验。
 func (s *KnowledgeService) UploadDocuments(kbID int64, userID int64, filename string, fileType string, fileSize int64, content io.Reader) (*model.KnowledgeArticle, error) {
-	// TODO(service/knowledge): 上传流程当前没有使用 StorageClient/MinIO，直接解析 multipart 内容。
-	// 与 PRD 的“上传到对象存储后异步解析”不一致，服务重启后也无法重试原始文件。
-	// 格式白名单校验
 	allowedTypes := map[string]bool{"pdf": true, "docx": true, "md": true, "txt": true}
 	if !allowedTypes[fileType] {
 		return nil, errcode.AppError{Code: errcode.ErrParam, Message: "不支持的文件格式: " + fileType + "（支持: pdf/docx/md/txt）"}
 	}
 
-	// 文件大小上限校验
-	// TODO(service/knowledge): API 文档写单文件最大 20MB，这里实际限制 50MB。
-	// 应统一前后端提示、后端校验和文档约束。
 	const maxSize = 50 * 1024 * 1024
 	if fileSize > maxSize {
 		return nil, errcode.AppError{Code: errcode.ErrParam, Message: "文件大小超过限制（最大 50MB）"}
 	}
 
-	if s.docParser == nil {
-		return nil, errcode.AppError{Code: errcode.ErrUnknown, Message: "文档解析器未初始化"}
-	}
-
-	text, err := s.docParser.Parse(content, fileType)
-	if err != nil {
-		return nil, errcode.AppError{Code: errcode.ErrParam, Message: "文档解析失败: " + err.Error()}
-	}
-	// TODO(service/knowledge): 解析在 HTTP 请求内同步完成，较大 PDF/DOCX 会阻塞上传接口。
-	// 更符合设计的做法是先落对象存储和 pending 记录，再由 Processor 异步下载解析。
-	if strings.TrimSpace(text) == "" {
-		return nil, errcode.AppError{Code: errcode.ErrParam, Message: "文档内容为空"}
-	}
-
 	article := &model.KnowledgeArticle{
 		KBID:      kbID,
 		Title:     filename,
-		Content:   text,
+		Content:   "",
 		Category:  "文档上传",
-		Status:    1, // 草稿
+		FileType:  fileType,
+		Status:    1,
 		CreatedBy: userID,
 	}
-	if err := s.repo.CreateArticle(article); err != nil {
-		return nil, errcode.AppError{Code: errcode.ErrUnknown, Message: "创建文章失败: " + err.Error()}
+
+	// 读取文件内容到内存（MinIO 上传和降级解析都需要）
+	data, err := io.ReadAll(io.LimitReader(content, maxSize))
+	if err != nil {
+		return nil, errcode.AppError{Code: errcode.ErrUnknown, Message: "读取上传文件失败: " + err.Error()}
+	}
+	if len(data) == 0 {
+		return nil, errcode.AppError{Code: errcode.ErrParam, Message: "文件内容为空"}
 	}
 
-	if s.processor != nil {
-		task := rag.ProcessTask{
-			ArticleID: article.ID,
-			KBID:      kbID,
-			Content:   text,
+	var task rag.ProcessTask
+	if s.storage != nil {
+		// 写入 MinIO 对象存储，processor 异步下载解析
+		bucket := "opsmind-documents"
+		key := fmt.Sprintf("documents/%d_%s", time.Now().UnixNano(), filename)
+		if _, err := s.storage.Upload(context.Background(), bucket, key, strings.NewReader(string(data)), int64(len(data)), ""); err != nil {
+			slog.Error("上传文件到 MinIO 失败", "bucket", bucket, "key", key, "error", err)
+			return nil, errcode.AppError{Code: errcode.ErrStorageUnavailable, Message: "上传文件到对象存储失败"}
+		}
+		article.MinioPath = fmt.Sprintf("%s/%s", bucket, key)
+		task = rag.ProcessTask{
+			ArticleID:      article.ID,
+			KBID:           kbID,
+			Bucket:         bucket,
+			Key:            key,
+			FileType:       fileType,
 			OnStatusChange: func(aID int64, status, errMsg string) {
 				_ = s.repo.UpdateArticleProcessStatus(aID, status, errMsg)
 				_ = s.repo.UpdateArticleStatus(aID, mapProcessStatus(status))
 			},
 		}
+	} else {
+		// 无 StorageClient 时降级：同步解析文本，processor 直接分块
+		if s.docParser == nil {
+			return nil, errcode.AppError{Code: errcode.ErrUnknown, Message: "文档解析器未初始化"}
+		}
+		text, err := s.docParser.Parse(strings.NewReader(string(data)), fileType)
+		if err != nil {
+			return nil, errcode.AppError{Code: errcode.ErrParam, Message: "文档解析失败: " + err.Error()}
+		}
+		if strings.TrimSpace(text) == "" {
+			return nil, errcode.AppError{Code: errcode.ErrParam, Message: "文档内容为空"}
+		}
+		article.Content = text
+		task = rag.ProcessTask{
+			ArticleID:      article.ID,
+			KBID:           kbID,
+			Content:        text,
+			OnStatusChange: func(aID int64, status, errMsg string) {
+				_ = s.repo.UpdateArticleProcessStatus(aID, status, errMsg)
+				_ = s.repo.UpdateArticleStatus(aID, mapProcessStatus(status))
+			},
+		}
+	}
+
+	if err := s.repo.CreateArticle(article); err != nil {
+		if s.storage != nil && article.MinioPath != "" {
+			b, k := splitMinioPath(article.MinioPath)
+			if delErr := s.storage.Delete(context.Background(), b, k); delErr != nil {
+				slog.Warn("清理 MinIO 孤立文件失败", "path", article.MinioPath, "error", delErr)
+			}
+		}
+		return nil, errcode.AppError{Code: errcode.ErrUnknown, Message: "创建文章失败: " + err.Error()}
+	}
+
+	if s.processor != nil {
 		if err := s.processor.Submit(task); err != nil {
 			return nil, errcode.AppError{Code: errcode.ErrUnknown, Message: "提交处理任务失败: " + err.Error()}
 		}
@@ -543,14 +576,30 @@ func (s *KnowledgeService) RetryDocument(articleID int64) error {
 	if err := s.repo.UpdateArticleStatus(articleID, int(model.ArticleStatusDraft)); err != nil {
 		slog.Warn("更新文章状态失败，不阻断主流程", "article_id", articleID, "error", err)
 	}
-	task := rag.ProcessTask{
-		ArticleID: articleID,
-		KBID:      article.KBID,
-		Content:   article.Content,
-		OnStatusChange: func(aID int64, status, errMsg string) {
-			_ = s.repo.UpdateArticleProcessStatus(aID, status, errMsg)
-			_ = s.repo.UpdateArticleStatus(aID, mapProcessStatus(status))
-		},
+	var task rag.ProcessTask
+	if article.MinioPath != "" {
+		bucket, key := splitMinioPath(article.MinioPath)
+		task = rag.ProcessTask{
+			ArticleID: articleID,
+			KBID:      article.KBID,
+			Bucket:    bucket,
+			Key:       key,
+			FileType:  article.FileType,
+			OnStatusChange: func(aID int64, status, errMsg string) {
+				_ = s.repo.UpdateArticleProcessStatus(aID, status, errMsg)
+				_ = s.repo.UpdateArticleStatus(aID, mapProcessStatus(status))
+			},
+		}
+	} else {
+		task = rag.ProcessTask{
+			ArticleID: articleID,
+			KBID:      article.KBID,
+			Content:   article.Content,
+			OnStatusChange: func(aID int64, status, errMsg string) {
+				_ = s.repo.UpdateArticleProcessStatus(aID, status, errMsg)
+				_ = s.repo.UpdateArticleStatus(aID, mapProcessStatus(status))
+			},
+		}
 	}
 	if err := s.processor.Submit(task); err != nil {
 		return errcode.AppError{Code: errcode.ErrUnknown, Message: "提交处理任务失败: " + err.Error()}
@@ -601,6 +650,15 @@ func statusText(status int16) string {
 	default:
 		return "未知"
 	}
+}
+
+// splitMinioPath 将 "bucket/key" 格式的 MinioPath 拆分为 bucket 和 key。
+func splitMinioPath(path string) (string, string) {
+	idx := strings.Index(path, "/")
+	if idx < 0 {
+		return path, ""
+	}
+	return path[:idx], path[idx+1:]
 }
 
 // mapProcessStatus 将 Processor 阶段映射为文章状态。
