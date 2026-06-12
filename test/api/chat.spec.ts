@@ -194,9 +194,42 @@ test.describe('查询与反馈', () => {
       headers: authHeaders(token),
       data: { feedback: 5 },
     });
-    // API 可能直接成功（不严格校验 feedback 值）或返回错误
     expect([200, 400, 404]).toContain(resp.status());
     const body = await resp.json();
     expect([0, 10003, 10004]).toContain(body.code);
+  });
+
+  test('对已创建的会话提交反馈成功（已解决）', async ({ request }) => {
+    if (!token || !kbId) { test.skip(true, '缺少 token 或知识库'); return; }
+
+    // 创建问答会话获取 session_id
+    const chatResp = await request.post(apiUrl('/api/v1/portal/chat-sessions'), {
+      headers: authHeaders(token),
+      data: { question: '反馈测试问题', kb_id: kbId },
+    });
+    const chatBody = await chatResp.json();
+    if (chatBody.code !== 0) { test.skip(true, '创建会话失败（AI 可能不可用）'); return; }
+    const sessionId = (chatBody.data as Record<string, unknown>).session_id as number;
+    expect(sessionId).toBeGreaterThan(0);
+
+    // 提交"已解决"反馈
+    const fbResp = await request.post(apiUrl(`/api/v1/portal/chat-sessions/${sessionId}/feedback`), {
+      headers: authHeaders(token),
+      data: { feedback: 1 },
+    });
+    expect(fbResp.status()).toBe(200);
+    const fbBody = await fbResp.json();
+    expect(fbBody.code, `反馈提交失败: ${JSON.stringify(fbBody)}`).toBe(0);
+    console.log(`  反馈提交成功: session_id=${sessionId}, feedback=1 (已解决)`);
+
+    // 验证会话详情中的反馈值
+    const detailResp = await request.get(apiUrl(`/api/v1/portal/chat-sessions/${sessionId}`), {
+      headers: authHeaders(token),
+    });
+    const detailBody = await detailResp.json();
+    if (detailBody.code === 0) {
+      const detail = detailBody.data as Record<string, unknown>;
+      expect(detail.feedback).toBe(1);
+    }
   });
 });

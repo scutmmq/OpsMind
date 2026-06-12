@@ -175,6 +175,49 @@ test.describe('DELETE /api/v1/admin/llm-configs/:id', () => {
     });
     await assertError(resp, [200, 400], 10003);
   });
+
+  test('删除非默认配置成功', async ({ request }) => {
+    if (!token) { test.skip(true, '缺少 token'); return; }
+
+    // 创建非默认配置
+    const name = uniqueName('可删除配置');
+    const createResp = await request.post(apiUrl('/api/v1/admin/llm-configs'), {
+      headers: authHeaders(token),
+      data: {
+        name, provider_type: 2, base_url: 'https://temp.example.com/v1',
+        llm_model: 'test-model', embedding_model: 'test-embed',
+        max_tokens: 4096, vector_dimension: 768, is_default: false,
+      },
+    });
+    const createBody = await createResp.json();
+    if (createBody.code !== 0) { test.skip(true, '创建配置失败'); return; }
+
+    // 从列表获取 ID
+    const listResp = await request.get(apiUrl('/api/v1/admin/llm-configs'), {
+      headers: authHeaders(token),
+    });
+    const listBody = await listResp.json();
+    const found = (listBody.data as Array<Record<string, unknown>>)?.find(
+      (c: Record<string, unknown>) => c.name === name
+    );
+    if (!found) { test.skip(true, '未找到创建的配置'); return; }
+    const configId = found.id as number;
+
+    // 删除
+    const deleteResp = await request.delete(apiUrl(`/api/v1/admin/llm-configs/${configId}`), {
+      headers: authHeaders(token),
+    });
+    expect(deleteResp.status()).toBe(200);
+    const deleteBody = await deleteResp.json();
+    expect(deleteBody.code, `删除非默认配置失败: ${JSON.stringify(deleteBody)}`).toBe(0);
+
+    // 验证已删除
+    const afterResp = await request.get(apiUrl(`/api/v1/admin/llm-configs/${configId}`), {
+      headers: authHeaders(token),
+    });
+    const afterBody = await afterResp.json();
+    expect(afterBody.code).toBe(10004);
+  });
 });
 
 test.describe('POST /api/v1/admin/llm-configs/:id/test', () => {

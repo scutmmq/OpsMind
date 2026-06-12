@@ -36,6 +36,20 @@ test.describe('GET /api/v1/admin/users', () => {
     const resp = await request.get(apiUrl('/api/v1/admin/users'));
     await assertError(resp, 401, 10001);
   });
+
+  test('按关键字搜索用户返回匹配结果', async ({ request }) => {
+    if (!token) { test.skip(true, '缺少 token'); return; }
+    // 搜索管理员
+    const resp = await request.get(apiUrl('/api/v1/admin/users?keyword=admin'), {
+      headers: authHeaders(token),
+    });
+    await assertPaginatedResponse(resp);
+    const body = await resp.json();
+    const users = body.data as Array<Record<string, unknown>>;
+    // 至少应返回 admin 用户
+    const hasAdmin = users?.some((u: Record<string, unknown>) => u.username === 'admin');
+    expect(hasAdmin, '搜索 admin 应返回 admin 用户').toBe(true);
+  });
 });
 
 test.describe.serial('POST /api/v1/admin/users — 创建用户完整生命周期', () => {

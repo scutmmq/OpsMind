@@ -145,6 +145,59 @@ test.describe('站内消息', () => {
   });
 });
 
+// ==================== 审计日志 — 组合筛选 ====================
+
+test.describe('审计日志组合筛选', () => {
+  const token = getToken();
+
+  test('同时按操作人和操作类型组合筛选', async ({ request }) => {
+    if (!token) { test.skip(true, '缺少 token'); return; }
+    const resp = await request.get(
+      apiUrl('/api/v1/admin/audit-logs?operator_id=1&action=knowledge:publish&page_size=5'),
+      { headers: authHeaders(token) },
+    );
+    await assertPaginatedResponse(resp);
+  });
+});
+
+// ==================== 站内消息 — 标记已读成功 ====================
+
+test.describe('站内消息标记已读', () => {
+  const token = getToken();
+
+  test('标记消息已读成功', async ({ request }) => {
+    if (!token) { test.skip(true, '缺少 token'); return; }
+
+    // 先获取消息列表
+    const listResp = await request.get(apiUrl('/api/v1/portal/messages?page_size=10'), {
+      headers: authHeaders(token),
+    });
+    const listBody = await listResp.json();
+    if (listBody.code !== 0) { test.skip(true, '获取消息列表失败'); return; }
+
+    const messages = listBody.data as Array<Record<string, unknown>>;
+    if (!messages?.length) {
+      console.log('  无消息可标记已读，跳过');
+      return;
+    }
+
+    // 找第一条未读消息标记已读
+    const unread = messages.find((m: Record<string, unknown>) => m.is_read === false);
+    if (!unread) {
+      console.log('  所有消息已读，跳过');
+      return;
+    }
+
+    const resp = await request.put(apiUrl(`/api/v1/portal/messages/${unread.id}/read`), {
+      headers: authHeaders(token),
+    });
+    expect(resp.status()).toBe(200);
+    const body = await resp.json();
+    expect(body.code, `标记已读失败: ${JSON.stringify(body)}`).toBe(0);
+    console.log(`  消息 ${unread.id} 已标记为已读`);
+  });
+});
+
 // ==================== 健康检查 ====================
 
 test.describe('GET /health', () => {

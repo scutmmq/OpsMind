@@ -161,3 +161,85 @@ test.describe('POST /api/v1/auth/logout', () => {
     await assertError(resp, 401, 10001);
   });
 });
+
+// ==================== 修改密码 — 成功路径 ====================
+
+test.describe.serial('POST /api/v1/auth/change-password — 成功路径', () => {
+  let testUserId: number;
+  let testToken: string;
+  const testUsername = `pwtest_${Date.now()}`;
+  const oldPassword = 'OldPass@123';
+  const newPassword = 'NewPass@456';
+
+  test.beforeAll(async ({ request }) => {
+    // 创建测试用户
+    const adminToken = requireAuth();
+    const createResp = await request.post(apiUrl('/api/v1/admin/users'), {
+      headers: authHeaders(adminToken),
+      data: {
+        username: testUsername,
+        password: oldPassword,
+        real_name: '密码测试用户',
+        phone: '13800009999',
+        role_ids: [4],
+      },
+    });
+    const createBody = await createResp.json();
+    if (createBody.code !== 0) { test.skip(true, '无法创建测试用户'); return; }
+
+    // 从列表获取 ID
+    const listResp = await request.get(apiUrl('/api/v1/admin/users?page_size=50'), {
+      headers: authHeaders(adminToken),
+    });
+    const listBody = await listResp.json();
+    const users = listBody.data as Array<Record<string, unknown>>;
+    const found = users?.find((u: Record<string, unknown>) => u.username === testUsername);
+    if (found) testUserId = found.id as number;
+
+    // 登录获取 token
+    const loginResp = await request.post(apiUrl('/api/v1/auth/login'), {
+      data: { username: testUsername, password: oldPassword },
+    });
+    const loginBody = await loginResp.json();
+    if (loginBody.code === 0) testToken = (loginBody.data as Record<string, string>).access_token;
+  });
+
+  test('修改密码成功 + 新密码可登录', async ({ request }) => {
+    if (!testToken) { test.skip(true, '测试用户未创建成功'); return; }
+
+    // 修改密码
+    const changeResp = await request.post(apiUrl('/api/v1/auth/change-password'), {
+      headers: authHeaders(testToken),
+      data: { old_password: oldPassword, new_password: newPassword },
+    });
+    expect(changeResp.status()).toBe(200);
+    const changeBody = await changeResp.json();
+    expect(changeBody.code, `修改密码失败: ${JSON.stringify(changeBody)}`).toBe(0);
+
+    // 用新密码登录验证
+    const loginResp = await request.post(apiUrl('/api/v1/auth/login'), {
+      data: { username: testUsername, password: newPassword },
+    });
+    const loginBody = await loginResp.json();
+    expect(loginBody.code, `新密码登录失败: ${JSON.stringify(loginBody)}`).toBe(0);
+    expect((loginBody.data as Record<string, unknown>).access_token).toBeTruthy();
+    console.log('  修改密码→新密码登录成功 ✅');
+  });
+
+  test.afterAll(async ({ request }) => {
+    // 清理：恢复原密码
+    if (!testToken || !testUserId) return;
+    // 用新密码登录拿到新 token
+    const loginResp = await request.post(apiUrl('/api/v1/auth/login'), {
+      data: { username: testUsername, password: newPassword },
+    });
+    const loginBody = await loginResp.json();
+    if (loginBody.code !== 0) return;
+    const newToken = (loginBody.data as Record<string, string>).access_token;
+    // 改回原密码
+    await request.post(apiUrl('/api/v1/auth/change-password'), {
+      headers: authHeaders(newToken),
+      data: { old_password: newPassword, new_password: oldPassword },
+    });
+  });
+});
