@@ -249,8 +249,8 @@ func TestKnowledgeRepo_CreateArticle(t *testing.T) {
 	// 验证可查回（含预加载 KnowledgeBase）
 	got, err := repo.FindArticleByID(article.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "如何重置密码？", got.Question)
-	assert.Equal(t, "请访问设置页面，点击修改密码。", got.Answer)
+	assert.Equal(t, "如何重置密码？", got.Title)
+	assert.Equal(t, "请访问设置页面，点击修改密码。", got.Content)
 	assert.Equal(t, "账号管理", got.Category)
 	assert.Equal(t, int16(1), got.Status)
 	assert.Equal(t, kb.ID, got.KBID)
@@ -296,8 +296,8 @@ func TestKnowledgeRepo_UpdateArticle(t *testing.T) {
 	}
 	require.NoError(t, db.Create(article).Error)
 
-	article.Question = "新问题"
-	article.Answer = "新答案"
+	article.Title = "新问题"
+	article.Content = "新答案"
 	article.UpdatedAt = time.Now()
 
 	err := repo.UpdateArticle(article)
@@ -305,8 +305,8 @@ func TestKnowledgeRepo_UpdateArticle(t *testing.T) {
 
 	got, err := repo.FindArticleByID(article.ID)
 	require.NoError(t, err)
-	assert.Equal(t, "新问题", got.Question)
-	assert.Equal(t, "新答案", got.Answer)
+	assert.Equal(t, "新问题", got.Title)
+	assert.Equal(t, "新答案", got.Content)
 }
 
 // TestKnowledgeRepo_ListArticles 分页查询文章列表（按知识库和状态过滤）
@@ -360,7 +360,7 @@ func TestKnowledgeRepo_ListArticles(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	assert.Len(t, articles, 1)
-	assert.Equal(t, "已发布问题", articles[0].Question)
+	assert.Equal(t, "已发布问题", articles[0].Title)
 
 	// 查询全部（status=0）
 	articles, total, err = repo.ListArticles(kb.ID, -1, 1, 10)

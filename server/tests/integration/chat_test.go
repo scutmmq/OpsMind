@@ -189,12 +189,12 @@ func TestChatIntegration_FullFlow(t *testing.T) {
 	sessionID := createResp.Data.SessionID
 	assert.NotZero(t, sessionID, "应返回 SessionID")
 	// v1 占位实现：统一返回降级兜底文本
-	assert.NotEmpty(t, createResp.Data.Answer, "应返回兜底回答")
+	assert.NotEmpty(t, createResp.Data.Content, "应返回兜底回答")
 	assert.True(t, createResp.Data.CanSubmitTicket, "v1 占位实现中 CanSubmitTicket 应为 true")
 	assert.Nil(t, createResp.Data.Sources, "v1 占位实现不返回知识来源")
 	assert.GreaterOrEqual(t, createResp.Data.DurationMS, 0, "DurationMS 应 >= 0")
 	t.Logf("✅ 步骤1: 问答创建成功，answer='%s'，conf=%.2f",
-		createResp.Data.Answer, createResp.Data.Confidence)
+		createResp.Data.Content, createResp.Data.Confidence)
 
 	// 2. 提交反馈（已解决）
 	feedbackBody, _ := json.Marshal(map[string]interface{}{"feedback": 1}) // 1=resolved
@@ -258,8 +258,8 @@ func TestChatIntegration_LowConfidenceToTicket(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.True(t, resp.Data.CanSubmitTicket, "v1 占位实现中 CanSubmitTicket 应为 true")
-	assert.NotEmpty(t, resp.Data.Answer, "应有兜底回答")
-	t.Logf("✅ 低置信度（confidence=0）→ CanSubmitTicket=true, 兜底回答='%s'", resp.Data.Answer)
+	assert.NotEmpty(t, resp.Data.Content, "应有兜底回答")
+	t.Logf("✅ 低置信度（confidence=0）→ CanSubmitTicket=true, 兜底回答='%s'", resp.Data.Content)
 }
 
 // =============================================================================

@@ -135,8 +135,8 @@ func TestChatRepo_FindByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("期望无错误, got %v", err)
 	}
-	if got.Question != "问题" {
-		t.Errorf("期望 Question='问题', got '%s'", got.Question)
+	if got.Title != "问题" {
+		t.Errorf("期望 Question='问题', got '%s'", got.Title)
 	}
 	if got.UserID != user.ID {
 		t.Errorf("期望 UserID=%d, got %d", user.ID, got.UserID)

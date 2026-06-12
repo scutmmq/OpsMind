@@ -189,8 +189,8 @@ func TestKnowledgeService_CreateArticle(t *testing.T) {
 	if article.Status != 1 {
 		t.Errorf("期望 status=1(草稿), got %d", article.Status)
 	}
-	if article.Question != "如何重置密码？" {
-		t.Errorf("期望问题 '如何重置密码？', got '%s'", article.Question)
+	if article.Title != "如何重置密码？" {
+		t.Errorf("期望问题 '如何重置密码？', got '%s'", article.Title)
 	}
 }
 
@@ -225,8 +225,8 @@ func TestKnowledgeService_UpdateArticle_Draft(t *testing.T) {
 
 	var updated model.KnowledgeArticle
 	knowledgeSvcDB.First(&updated, article.ID)
-	if updated.Question != "更新后的问题" {
-		t.Errorf("期望问题被更新, got '%s'", updated.Question)
+	if updated.Title != "更新后的问题" {
+		t.Errorf("期望问题被更新, got '%s'", updated.Title)
 	}
 }
 
@@ -440,8 +440,8 @@ func TestKnowledgeService_GetArticleDetail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("期望无错误, got %v", err)
 	}
-	if result.Question != "测试问题" {
-		t.Errorf("期望问题 '测试问题', got '%s'", result.Question)
+	if result.Title != "测试问题" {
+		t.Errorf("期望问题 '测试问题', got '%s'", result.Title)
 	}
 	if len(result.Chunks) != 1 {
 		t.Errorf("期望 1 个切片, got %d", len(result.Chunks))
