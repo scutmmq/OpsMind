@@ -76,8 +76,8 @@ func createTestArticle(t *testing.T, _ *service.KnowledgeService, kbID int64, st
 	t.Helper()
 	article := &model.KnowledgeArticle{
 		KBID:      kbID,
-		Question:  "测试问题",
-		Answer:    "测试答案",
+		Title:  "测试问题",
+		Content:    "测试答案",
 		Status:    status,
 		CreatedBy: 1,
 	}
@@ -110,8 +110,8 @@ func TestKnowledgeService_CreateKB(t *testing.T) {
 	if kb.Name != "测试知识库" {
 		t.Errorf("期望名称 '测试知识库', got '%s'", kb.Name)
 	}
-	if kb.RAGWorkspaceSlug != "" {
-		t.Errorf("v2 CreateKB 不再设置 RAGWorkspaceSlug, 期望为空, got '%s'", kb.RAGWorkspaceSlug)
+	if kb.RAGWorkspaceSlug == "" {
+		t.Errorf("v2 CreateKB 应自动生成 RAGWorkspaceSlug, 但为空")
 	}
 }
 
@@ -174,8 +174,8 @@ func TestKnowledgeService_CreateArticle(t *testing.T) {
 
 	err := svc.CreateArticle(request.CreateArticleRequest{
 		KBID:     kb.ID,
-		Question: "如何重置密码？",
-		Answer:   "请访问设置页面。",
+		Title: "如何重置密码？",
+		Content:   "请访问设置页面。",
 		Category: "账号管理",
 		Tags:     []string{"密码", "账号"},
 	}, 1)
@@ -200,8 +200,8 @@ func TestKnowledgeService_CreateArticle_KBNotFound(t *testing.T) {
 
 	err := svc.CreateArticle(request.CreateArticleRequest{
 		KBID:     99999,
-		Question: "问题",
-		Answer:   "答案",
+		Title: "问题",
+		Content:   "答案",
 	}, 1)
 	if err == nil {
 		t.Fatal("期望错误, got nil")
@@ -215,8 +215,8 @@ func TestKnowledgeService_UpdateArticle_Draft(t *testing.T) {
 	article := createTestArticle(t, svc, kb.ID, 1) // 草稿
 
 	err := svc.UpdateArticle(article.ID, request.UpdateArticleRequest{
-		Question: "更新后的问题",
-		Answer:   "更新后的答案",
+		Title: "更新后的问题",
+		Content:   "更新后的答案",
 		Category: "新分类",
 	}, 1)
 	if err != nil {
@@ -237,8 +237,8 @@ func TestKnowledgeService_UpdateArticle_NotEditable(t *testing.T) {
 	article := createTestArticle(t, svc, kb.ID, 3) // 已发布
 
 	err := svc.UpdateArticle(article.ID, request.UpdateArticleRequest{
-		Question: "尝试修改",
-		Answer:   "应该失败",
+		Title: "尝试修改",
+		Content:   "应该失败",
 	}, 1)
 	if err == nil {
 		t.Fatal("期望错误, got nil")

@@ -52,19 +52,27 @@ func setupKnowledgeTestDB(t *testing.T) *gorm.DB {
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	)`)
 
-	db.Exec(`CREATE TABLE IF NOT EXISTS knowledge_articles (
+	// v2 schema 迁移：如旧表使用 question/answer 列则重建
+	db.Exec(`DROP TABLE IF EXISTS knowledge_articles CASCADE`)
+	db.Exec(`CREATE TABLE knowledge_articles (
 		id BIGSERIAL PRIMARY KEY,
 		kb_id BIGINT NOT NULL,
-		question TEXT NOT NULL,
-		answer TEXT NOT NULL,
+		title VARCHAR(255) NOT NULL,
+		content TEXT NOT NULL,
 		category VARCHAR(64),
 		tags JSONB,
 		status SMALLINT NOT NULL DEFAULT 1,
+		source_type SMALLINT NOT NULL DEFAULT 1,
+		word_count INTEGER NOT NULL DEFAULT 0,
+		chunk_count INTEGER NOT NULL DEFAULT 0,
+		file_type VARCHAR(16) DEFAULT '',
+		minio_path VARCHAR(512) DEFAULT '',
+		process_status VARCHAR(16) NOT NULL DEFAULT 'completed',
+		process_error TEXT DEFAULT '',
 		created_by BIGINT NOT NULL DEFAULT 0,
 		reviewed_by BIGINT,
 		published_by BIGINT,
-		review_comment TEXT,
-		rag_document_location VARCHAR(512),
+		review_comment TEXT DEFAULT '',
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	)`)
@@ -232,8 +240,8 @@ func TestKnowledgeRepo_CreateArticle(t *testing.T) {
 
 	article := &model.KnowledgeArticle{
 		KBID:      kb.ID,
-		Question:  "如何重置密码？",
-		Answer:    "请访问设置页面，点击修改密码。",
+		Title:  "如何重置密码？",
+		Content:    "请访问设置页面，点击修改密码。",
 		Category:  "账号管理",
 		Tags:      datatypes.JSON(`["运维", "网络"]`),
 		Status:    1,
@@ -287,8 +295,8 @@ func TestKnowledgeRepo_UpdateArticle(t *testing.T) {
 
 	article := &model.KnowledgeArticle{
 		KBID:      kb.ID,
-		Question:  "旧问题",
-		Answer:    "旧答案",
+		Title:  "旧问题",
+		Content:    "旧答案",
 		Status:    1,
 		CreatedBy: 1,
 		CreatedAt: now,
@@ -328,8 +336,8 @@ func TestKnowledgeRepo_ListArticles(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		a := &model.KnowledgeArticle{
 			KBID:      kb.ID,
-			Question:  "问题" + string(rune('A'+i)),
-			Answer:    "答案" + string(rune('A'+i)),
+			Title:  "问题" + string(rune('A'+i)),
+			Content:    "答案" + string(rune('A'+i)),
 			Status:    1, // 草稿
 			CreatedBy: 1,
 			CreatedAt: now,
@@ -340,8 +348,8 @@ func TestKnowledgeRepo_ListArticles(t *testing.T) {
 
 	published := &model.KnowledgeArticle{
 		KBID:      kb.ID,
-		Question:  "已发布问题",
-		Answer:    "已发布答案",
+		Title:  "已发布问题",
+		Content:    "已发布答案",
 		Status:    3, // 已发布
 		CreatedBy: 1,
 		CreatedAt: now,
@@ -387,8 +395,8 @@ func TestKnowledgeRepo_ListArticles_Pagination(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		a := &model.KnowledgeArticle{
 			KBID:      kb.ID,
-			Question:  "问题",
-			Answer:    "答案",
+			Title:  "问题",
+			Content:    "答案",
 			Status:    1,
 			CreatedBy: 1,
 			CreatedAt: now,
@@ -436,8 +444,8 @@ func TestKnowledgeRepo_ListArticles_PreloadKnowledgeBase(t *testing.T) {
 
 	article := &model.KnowledgeArticle{
 		KBID:      kb.ID,
-		Question:  "Preload测试",
-		Answer:    "验证Preload",
+		Title:  "Preload测试",
+		Content:    "验证Preload",
 		Status:    1,
 		CreatedBy: 1,
 		CreatedAt: now,
@@ -477,8 +485,8 @@ func TestKnowledgeRepo_UpdateArticleStatus(t *testing.T) {
 
 	article := &model.KnowledgeArticle{
 		KBID:      kb.ID,
-		Question:  "状态问题",
-		Answer:    "状态答案",
+		Title:  "状态问题",
+		Content:    "状态答案",
 		Status:    1, // 草稿
 		CreatedBy: 1,
 		CreatedAt: now,

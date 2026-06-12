@@ -65,7 +65,7 @@ func setupDashboardTest(t *testing.T) *service.DashboardService {
 	)`)
 	dashboardDB.Exec(`CREATE TABLE IF NOT EXISTS knowledge_articles (
 		id BIGSERIAL PRIMARY KEY, kb_id BIGINT NOT NULL,
-		question TEXT NOT NULL, answer TEXT NOT NULL, category VARCHAR(64),
+		title VARCHAR(255) NOT NULL, content TEXT NOT NULL, category VARCHAR(64),
 		tags JSONB, status SMALLINT NOT NULL DEFAULT 1,
 		created_by BIGINT NOT NULL, reviewed_by BIGINT, published_by BIGINT,
 		review_comment TEXT, rag_document_location VARCHAR(512),
@@ -153,7 +153,7 @@ func seedDashboardData(t *testing.T) {
 	}
 	for _, a := range articles {
 		dashboardDB.Exec(
-			`INSERT INTO knowledge_articles (kb_id, question, answer, status, created_by, created_at, updated_at)
+			`INSERT INTO knowledge_articles (kb_id, title, content, status, created_by, created_at, updated_at)
 			 VALUES (1, $1, $2, $3, 1, NOW(), NOW())`,
 			a.question, a.answer, a.status,
 		)

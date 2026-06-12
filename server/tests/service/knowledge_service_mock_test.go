@@ -139,7 +139,7 @@ func TestKnowledgeMock_Publish(t *testing.T) {
 		},
 		articles: map[int64]*model.KnowledgeArticle{
 			10: {
-				ID: 10, KBID: 1, Question: "VPN配置", Answer: "VPN配置步骤...",
+				ID: 10, KBID: 1, Title: "VPN配置", Content: "VPN配置步骤...",
 				Status: 3, // 已通过
 			},
 		},
@@ -176,7 +176,7 @@ func TestKnowledgeMock_Publish(t *testing.T) {
 func TestKnowledgeMock_Disable(t *testing.T) {
 	repo := &mockKnowledgeRepo{
 		articles: map[int64]*model.KnowledgeArticle{
-			20: {ID: 20, KBID: 1, Question: "旧文档", Answer: "...", Status: 4}, // 已发布
+			20: {ID: 20, KBID: 1, Title: "旧文档", Content: "...", Status: 4}, // 已发布
 		},
 	}
 	store := &mockVectorStore{}
@@ -197,7 +197,7 @@ func TestKnowledgeMock_Disable(t *testing.T) {
 func TestKnowledgeMock_Enable(t *testing.T) {
 	repo := &mockKnowledgeRepo{
 		articles: map[int64]*model.KnowledgeArticle{
-			30: {ID: 30, KBID: 1, Question: "旧文档", Answer: "...", Status: int16(model.ArticleStatusDisabled)}, // 已停用
+			30: {ID: 30, KBID: 1, Title: "旧文档", Content: "...", Status: int16(model.ArticleStatusDisabled)}, // 已停用
 		},
 	}
 
@@ -217,7 +217,7 @@ func TestKnowledgeMock_Enable(t *testing.T) {
 func TestKnowledgeMock_PublishNotApproved(t *testing.T) {
 	repo := &mockKnowledgeRepo{
 		articles: map[int64]*model.KnowledgeArticle{
-			40: {ID: 40, KBID: 1, Question: "草稿", Answer: "...", Status: 1}, // 草稿
+			40: {ID: 40, KBID: 1, Title: "草稿", Content: "...", Status: 1}, // 草稿
 		},
 	}
 

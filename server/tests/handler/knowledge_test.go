@@ -175,8 +175,8 @@ func TestKnowledgeHandler_CreateArticle(t *testing.T) {
 
 	body, _ := json.Marshal(request.CreateArticleRequest{
 		KBID:     kb.ID,
-		Question: "问题",
-		Answer:   "答案",
+		Title: "问题",
+		Content:   "答案",
 		Category: "分类",
 	})
 	req := httptest.NewRequest("POST", "/api/v1/admin/knowledge-bases/"+itoa(kb.ID)+"/articles", bytes.NewReader(body))
@@ -196,7 +196,7 @@ func TestKnowledgeHandler_SubmitReview(t *testing.T) {
 
 	kb := &model.KnowledgeBase{Name: "审核测试", RAGWorkspaceSlug: "review-slug", CreatedBy: 1}
 	knowledgeHandlerDB.Create(kb)
-	article := &model.KnowledgeArticle{KBID: kb.ID, Question: "Q", Answer: "A", Status: 1, CreatedBy: 1}
+	article := &model.KnowledgeArticle{KBID: kb.ID, Title: "Q", Content: "A", Status: 1, CreatedBy: 1}
 	knowledgeHandlerDB.Create(article)
 
 	r.POST("/api/v1/admin/articles/:id/submit-review", h.SubmitReview)
@@ -223,7 +223,7 @@ func TestKnowledgeHandler_Review(t *testing.T) {
 
 	kb := &model.KnowledgeBase{Name: "审核通过", RAGWorkspaceSlug: "approve-slug", CreatedBy: 1}
 	knowledgeHandlerDB.Create(kb)
-	article := &model.KnowledgeArticle{KBID: kb.ID, Question: "Q", Answer: "A", Status: 2, CreatedBy: 1}
+	article := &model.KnowledgeArticle{KBID: kb.ID, Title: "Q", Content: "A", Status: 2, CreatedBy: 1}
 	knowledgeHandlerDB.Create(article)
 
 	r.POST("/api/v1/admin/articles/:id/review", h.Review)
@@ -248,7 +248,7 @@ func TestKnowledgeHandler_Enable(t *testing.T) {
 	kb := &model.KnowledgeBase{Name: "启用测试", RAGWorkspaceSlug: "enable-slug", CreatedBy: 1}
 	knowledgeHandlerDB.Create(kb)
 	// GORM 默认零值（int16(0)）会被数据库 DEFAULT 1 覆盖，需创建后手动更新状态
-	article := &model.KnowledgeArticle{KBID: kb.ID, Question: "Q", Answer: "A", Status: 1, CreatedBy: 1}
+	article := &model.KnowledgeArticle{KBID: kb.ID, Title: "Q", Content: "A", Status: 1, CreatedBy: 1}
 	knowledgeHandlerDB.Create(article)
 	knowledgeHandlerDB.Model(article).Update("status", int16(model.ArticleStatusDisabled))
 

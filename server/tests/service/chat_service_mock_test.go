@@ -97,7 +97,7 @@ func TestChatMock_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateChatSession 失败: %v", err)
 	}
-	if resp.Content == "" {
+	if resp.Answer == "" {
 		t.Error("回答不应为空")
 	}
 	if resp.Confidence <= 0 {
@@ -156,7 +156,7 @@ func TestChatMock_LLMFail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LLM 降级不应返回 error: %v", err)
 	}
-	if resp.Content == "" {
+	if resp.Answer == "" {
 		t.Error("降级时应返回兜底文本")
 	}
 }

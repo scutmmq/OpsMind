@@ -46,13 +46,13 @@ func TestKnowledgeArticle_Fields(t *testing.T) {
 	tags := datatypes.JSON(`["OA","登录"]`)
 	art := model.KnowledgeArticle{
 		KBID:               1,
-		Question:           "OA系统无法登录怎么办？",
-		Answer:             "请清除浏览器缓存后重试",
+		Title:           "OA系统无法登录怎么办？",
+		Content:             "请清除浏览器缓存后重试",
 		Category:           "OA系统",
 		Tags:               tags,
 		Status:             model.ArticleStatusDraft,
 		CreatedBy:          1,
-		RAGDocumentLocation: "doc-uuid-123",
+		// RAGDocumentLocation removed in v2
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}

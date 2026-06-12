@@ -115,11 +115,11 @@ func TestChatService_CreateChatSession_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("期望无错误, got %v", err)
 	}
-	if resp.Content == "" {
+	if resp.Answer == "" {
 		t.Error("期望非空 Answer（v1 占位阶段应有兜底回答）")
 	}
-	if resp.Title != "如何重置密码？" {
-		t.Errorf("期望 Question 保持原值, got '%s'", resp.Title)
+	if resp.Question != "如何重置密码？" {
+		t.Errorf("期望 Question 保持原值, got '%s'", resp.Question)
 	}
 	if !resp.CanSubmitTicket {
 		t.Error("CanSubmitTicket 应为 true（v1 占位阶段）")

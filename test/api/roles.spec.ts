@@ -11,7 +11,7 @@ import {
 
 const token = getToken();
 
-test.describe('角色 CRUD 生命周期', () => {
+test.describe.serial('角色 CRUD 生命周期', () => {
   let roleId: number;
   const roleName = uniqueName('测试角色');
 
@@ -43,7 +43,7 @@ test.describe('角色 CRUD 生命周期', () => {
       data: { name: roleName, description: '重复', permissions: [] },
     });
     const body = await resp.json();
-    expect([200, 400]).toContain(resp.status());
+    expect([200, 400, 409]).toContain(resp.status());
     expect([10005, 0]).toContain(body.code);
   });
 

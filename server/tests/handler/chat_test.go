@@ -145,8 +145,8 @@ func TestChatHandler_CreateSession_Success(t *testing.T) {
 	if resp.Data.SessionID == 0 {
 		t.Error("应填充 SessionID")
 	}
-	if resp.Data.Title != "网络连不上怎么办？" {
-		t.Errorf("期望 Question='网络连不上怎么办？', got '%s'", resp.Data.Title)
+	if resp.Data.Question != "网络连不上怎么办？" {
+		t.Errorf("期望 Question='网络连不上怎么办？', got '%s'", resp.Data.Question)
 	}
 }
 
