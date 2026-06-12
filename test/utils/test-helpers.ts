@@ -6,13 +6,12 @@ import { fileURLToPath } from 'url';
 /**
  * OpsMind API 测试共享工具函数。
  *
- * 提供统一的响应校验、认证 token 管理、分页参数构建等功能，
- * 避免各测试文件重复编写相同的校验逻辑。
+ * 提供统一的响应校验、认证 token 管理、分页参数构建、测试数据工厂等功能。
+ * 核心设计：requireAuth() 消除各测试文件中重复的 loadAuthState→skip 样板代码。
  */
 
 // ---- 类型定义 ----
 
-/** OpsMind 统一 API 响应格式 */
 export interface ApiResponse<T = unknown> {
   code: number;
   message: string;
@@ -22,38 +21,42 @@ export interface ApiResponse<T = unknown> {
   page_size?: number;
 }
 
-/** 登录响应中保存的认证信息 */
 export interface AuthState {
   accessToken: string;
   refreshToken: string;
   userId: number;
   username: string;
   roles: string[];
-  expiresAt: number; // epoch ms
+  expiresAt: number;
 }
 
-/** 创建资源后返回的 ID */
-export interface CreatedEntity {
-  id: number;
+export interface LoginData {
+  access_token: string;
+  refresh_token: string;
+  user: { id: number; username: string; real_name: string };
+  roles: string[];
+  permissions: string[];
+  menus: Array<{ id: number; name: string; path: string; icon: string }>;
+}
+
+export interface PaginatedData<T> {
+  items?: T[];
+  articles?: T[];
+  total: number;
 }
 
 // ---- 认证状态管理 ----
 
-// ESM 兼容的 __dirname 替代方案
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const AUTH_STATE_PATH = path.resolve(__dirname, '..', 'auth', 'auth-state.json');
+const AUTH_REPORTER_PATH = path.resolve(__dirname, '..', 'auth', 'auth-state-reporter.json');
 
-/**
- * 从文件读取已保存的认证状态。
- * 如果 token 已过期（超过 1.5 小时），返回 null 以便重新登录。
- */
 export function loadAuthState(): AuthState | null {
   try {
     if (!fs.existsSync(AUTH_STATE_PATH)) return null;
     const raw = fs.readFileSync(AUTH_STATE_PATH, 'utf-8');
     const state: AuthState = JSON.parse(raw);
-    // Token 有效期 2 小时，提前 30 分钟刷新
     if (Date.now() > state.expiresAt - 30 * 60 * 1000) return null;
     return state;
   } catch {
@@ -61,20 +64,68 @@ export function loadAuthState(): AuthState | null {
   }
 }
 
-/**
- * 保存认证状态到文件。
- */
+/** 加载报障人角色的认证状态 */
+export function loadReporterState(): AuthState | null {
+  try {
+    if (!fs.existsSync(AUTH_REPORTER_PATH)) return null;
+    const raw = fs.readFileSync(AUTH_REPORTER_PATH, 'utf-8');
+    const state: AuthState = JSON.parse(raw);
+    if (Date.now() > state.expiresAt - 30 * 60 * 1000) return null;
+    return state;
+  } catch {
+    return null;
+  }
+}
+
 export function saveAuthState(state: AuthState): void {
   const dir = path.dirname(AUTH_STATE_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(AUTH_STATE_PATH, JSON.stringify(state, null, 2), 'utf-8');
 }
 
-// ---- 请求辅助函数 ----
+// ---- 认证 Token 获取（消除 skip 样板） ----
 
 /**
- * 返回带 JWT 认证头的 headers 对象。
+ * 获取 admin token，未找到时抛错让测试显式失败。
+ * 用于替代 loadAuthState() + test.skip() 的重复模式。
+ *
+ * 使用方式：
+ *   const token = requireAuth();
+ *   如果 token 不可用，测试直接失败（而非静默 skip），
+ *   在 CI 中更容易发现 setup 问题。
  */
+export function requireAuth(): string {
+  const state = loadAuthState();
+  if (!state || !state.accessToken) {
+    throw new Error('认证状态不可用，请先运行 npm run test:auth');
+  }
+  return state.accessToken;
+}
+
+/** 获取报障人 token */
+export function requireReporterAuth(): string {
+  const state = loadReporterState();
+  if (!state || !state.accessToken) {
+    throw new Error('报障人认证状态不可用，请先运行 npm run test:auth');
+  }
+  return state.accessToken;
+}
+
+/** 获取 admin token，不可用时返回 null（调用方自行处理降级） */
+export function getToken(): string | null {
+  const state = loadAuthState();
+  return state?.accessToken || null;
+}
+
+// ---- 请求辅助 ----
+
+export const BASE_URL = process.env.API_BASE_URL || 'http://localhost:8080';
+
+/** 构建完整 API URL */
+export function apiUrl(path: string): string {
+  return `${BASE_URL}${path}`;
+}
+
 export function authHeaders(token: string): Record<string, string> {
   return {
     'Content-Type': 'application/json',
@@ -82,20 +133,12 @@ export function authHeaders(token: string): Record<string, string> {
   };
 }
 
-/**
- * 返回 multipart/form-data 的认证头（不含 Content-Type，让 Playwright 自动设置 boundary）。
- */
 export function authHeadersMultipart(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-  };
+  return { Authorization: `Bearer ${token}` };
 }
 
-// ---- 响应校验函数 ----
+// ---- 响应校验 ----
 
-/**
- * 校验响应 HTTP 状态码和 OpsMind 业务 code。
- */
 export async function assertSuccess(response: APIResponse, expectedCode = 0): Promise<ApiResponse> {
   expect(response.status()).toBe(200);
   const body: ApiResponse = await response.json();
@@ -106,9 +149,6 @@ export async function assertSuccess(response: APIResponse, expectedCode = 0): Pr
   return body;
 }
 
-/**
- * 校验失败响应（HTTP 非 200 或业务 code 非 0）。
- */
 export async function assertError(
   response: APIResponse,
   expectedHttpStatus: number,
@@ -121,9 +161,6 @@ export async function assertError(
   return body;
 }
 
-/**
- * 校验分页响应结构。
- */
 export async function assertPaginatedResponse(
   response: APIResponse,
   minTotal = 0,
@@ -136,9 +173,6 @@ export async function assertPaginatedResponse(
   return body;
 }
 
-/**
- * 校验响应 data 不为 null/undefined。
- */
 export function assertDataNotNull<T>(body: ApiResponse<T>): T {
   expect(body.data).not.toBeNull();
   expect(body.data).not.toBeUndefined();
@@ -146,13 +180,29 @@ export function assertDataNotNull<T>(body: ApiResponse<T>): T {
 }
 
 /**
- * 构建分页查询参数。
+ * 校验字段存在且类型正确（用于响应结构契约测试）。
+ *
+ * @param obj   响应对象
+ * @param fields 字段名到期望类型的映射（'string' | 'number' | 'boolean' | 'array' | 'object'）
  */
-export function paginationParams(page = 1, pageSize = 10): Record<string, string> {
-  return {
-    page: String(page),
-    page_size: String(pageSize),
-  };
+export function assertFields(
+  obj: Record<string, unknown>,
+  fields: Record<string, 'string' | 'number' | 'boolean' | 'array' | 'object'>,
+): void {
+  for (const [key, type] of Object.entries(fields)) {
+    expect(obj, `字段 ${key} 应存在`).toHaveProperty(key);
+    switch (type) {
+      case 'array':
+        expect(Array.isArray(obj[key]), `字段 ${key} 应为数组`).toBe(true);
+        break;
+      case 'object':
+        expect(typeof obj[key], `字段 ${key} 应为对象`).toBe('object');
+        expect(obj[key]).not.toBeNull();
+        break;
+      default:
+        expect(typeof obj[key], `字段 ${key} 应为 ${type}`).toBe(type);
+    }
+  }
 }
 
 // ---- 测试数据工厂 ----
@@ -167,9 +217,42 @@ export function uniqueUsername(): string {
   return `testuser_${Date.now()}_${++seq}`;
 }
 
-/**
- * 生成符合密码策略的测试密码（大小写字母+数字，8位以上）。
- */
 export function validPassword(): string {
   return `Test${Date.now()}!1`;
+}
+
+/** 标准测试文章数据 */
+export function testArticleData(title?: string) {
+  return {
+    title: title || uniqueName('测试文章'),
+    content: `## 自动化测试\n\n这是测试内容，创建于 ${new Date().toISOString()}。\n\n### 操作步骤\n\n1. 第一步\n2. 第二步\n3. 第三步`,
+    source_type: 1,
+    category: '测试分类',
+    tags: ['测试', '自动化'],
+  };
+}
+
+/** 标准测试申告数据 */
+export function testTicketData(title?: string) {
+  return {
+    title: title || uniqueName('测试申告'),
+    description: '自动化测试创建的申告，用于验证接口功能',
+    urgency: 1,
+    impact_scope: 0,
+    affected_systems: ['测试系统'],
+    contact_phone: '13800000001',
+    contact_email: 'test@opsmind.local',
+  };
+}
+
+/** 标准测试用户数据 */
+export function testUserData() {
+  return {
+    username: uniqueUsername(),
+    password: validPassword(),
+    real_name: 'Playwright测试用户',
+    phone: `1380000${String(++seq).padStart(4, '0')}`,
+    email: `test_${Date.now()}@opsmind.local`,
+    role_ids: [4],
+  };
 }
