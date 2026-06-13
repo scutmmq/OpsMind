@@ -22,6 +22,7 @@ package rag
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"opsmind/internal/adapter"
@@ -215,6 +216,16 @@ func (p *Pipeline) Execute(ctx context.Context, query string, kbID int64, opts R
 
 	metrics.Steps = steps
 	metrics.TotalDurationMS = time.Since(start).Milliseconds()
+
+	// 记录管道执行总结：异常步骤数 + 检索结果数 + 总耗时
+	failCount := 0
+	for _, s := range steps {
+		if !s.Success {
+			failCount++
+		}
+	}
+	slog.Info("RAG 管道执行完成", "kb_id", kbID, "chunks", len(allChunks),
+		"steps", len(steps), "failures", failCount, "latency_ms", metrics.TotalDurationMS)
 
 	return &RAGResult{
 		Chunks:  allChunks,

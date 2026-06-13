@@ -12,6 +12,7 @@ import (
 	"opsmind/pkg/response"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // CurrentUser JWT 解析后的用户信息，写入 Gin context。
@@ -30,12 +31,17 @@ type CurrentUser struct {
 
 // JWTAuth 返回 JWT 认证中间件。
 //
-// 为什么返回 gin.HandlerFunc 而非直接使用闭包：
-// 函数签名更清晰，调用方通过参数传入 secret，便于测试和配置。
-func JWTAuth(secret string) gin.HandlerFunc {
+// db 用于校验用户状态（冻结/存在性）；测试环境中可传 nil 跳过 DB 校验。
+// secret 为空时中间件对所有请求返回配置错误，而非静默放行。
+func JWTAuth(db *gorm.DB, secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// TODO(middleware/auth): secret 为空时应在中间件构造阶段拒绝启动或返回明确配置错误。
-		// 当前空密钥会让 token 校验行为依赖调用方是否提前检查，安全边界不够集中。
+		// 纵深防御：secret 为空时应由 main.go 在启动阶段拒绝，
+		// 此处作为运行时兜底，避免空密钥令牌被意外接受。
+		if secret == "" {
+			abortWithError(c, errcode.ErrUnknown, "JWT 密钥未配置")
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			abortWithError(c, errcode.ErrAuth, "缺失 Authorization 头")
@@ -54,13 +60,30 @@ func JWTAuth(secret string) gin.HandlerFunc {
 			abortWithError(c, errcode.ErrAuth, "令牌无效或已过期")
 			return
 		}
-		// TODO(middleware/auth): JWT 只校验签名和过期时间，没有检查用户是否被冻结或角色权限是否已被撤销。
-		// 对高风险后台接口，可增加 token_version 或短期权限缓存，让权限变更能即时失效。
 
 		// 拒绝 refresh token 用于 API 认证，保证双令牌安全模型
 		if claims.TokenType != "access" {
 			abortWithError(c, errcode.ErrAuth, "令牌类型错误，请使用访问令牌")
 			return
+		}
+
+		// DB 可用时校验用户状态（冻结/存在性），
+		// 弥补 JWT 纯签名校验的不足——token 签发后被冻结的用户应被即时拒绝。
+		if db != nil {
+			var userStatus int
+			// 仅查询 status 字段，不读取全表数据
+			err := db.Table("users").
+				Where("id = ?", claims.UserID).
+				Select("status").
+				Scan(&userStatus).Error
+			if err != nil {
+				abortWithError(c, errcode.ErrAuth, "用户不存在或已被删除")
+				return
+			}
+			if userStatus == 2 {
+				abortWithError(c, errcode.ErrAuth, "账号已被冻结")
+				return
+			}
 		}
 
 		// 从 JWT Claims 读取权限（登录时已从 Role.Permissions DB 字段解析）
@@ -81,7 +104,6 @@ func JWTAuth(secret string) gin.HandlerFunc {
 		c.Next()
 	}
 }
-
 
 // abortWithError 中断请求并返回统一错误响应。
 func abortWithError(c *gin.Context, code int, msg string) {

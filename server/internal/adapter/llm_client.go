@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -143,6 +144,7 @@ type openAICompletionResponse struct {
 func (c *OpenAIClient) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	// TODO(adapter/llm): req.Model 为空时应使用客户端默认模型或直接返回参数错误。
 	// OpenAI-compatible 服务通常要求 model 必填，空值错误应在本地提前暴露。
+	start := time.Now()
 	body := openAICompletionRequest{
 		Model:       req.Model,
 		Messages:    req.Messages,
@@ -153,6 +155,7 @@ func (c *OpenAIClient) ChatCompletion(ctx context.Context, req ChatRequest) (*Ch
 
 	respBody, err := c.doRequest(ctx, "/chat/completions", body)
 	if err != nil {
+		slog.Error("LLM 同步调用失败", "model", req.Model, "latency_ms", time.Since(start).Milliseconds(), "error", err)
 		return nil, err
 	}
 
@@ -165,6 +168,7 @@ func (c *OpenAIClient) ChatCompletion(ctx context.Context, req ChatRequest) (*Ch
 		return nil, fmt.Errorf("LLM 返回空 choices")
 	}
 
+	slog.Info("LLM 同步调用完成", "model", req.Model, "tokens", apiResp.Usage.TotalTokens, "latency_ms", time.Since(start).Milliseconds())
 	return &ChatResponse{
 		Content:      apiResp.Choices[0].Message.Content,
 		FinishReason: apiResp.Choices[0].FinishReason,
@@ -214,8 +218,10 @@ func (c *OpenAIClient) ChatCompletionStream(ctx context.Context, req ChatRequest
 	c.setHeaders(httpReq)
 	httpReq.Header.Set("Accept", "text/event-stream")
 
+	slog.Info("LLM 流式调用开始", "model", req.Model)
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
+		slog.Error("LLM 流式请求失败", "model", req.Model, "error", err)
 		return nil, fmt.Errorf("流式请求 %s 失败: %w", c.baseURL, err)
 	}
 	// TODO(adapter/llm): 流式请求没有复用 doRequest 的 429/503 重试策略。
@@ -223,6 +229,7 @@ func (c *OpenAIClient) ChatCompletionStream(ctx context.Context, req ChatRequest
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		slog.Error("LLM 流式 API 返回错误", "model", req.Model, "status", resp.StatusCode)
 		return nil, fmt.Errorf("LLM API 返回 HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -326,6 +333,7 @@ func (c *OpenAIClient) doRequest(ctx context.Context, path string, body interfac
 			if delay > 8*time.Second {
 				delay = 8 * time.Second
 			}
+			slog.Warn("LLM HTTP 请求重试中", "attempt", attempt, "delay_ms", delay.Milliseconds(), "error", lastErr)
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()

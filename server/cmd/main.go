@@ -7,10 +7,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"opsmind/internal/config"
 	"opsmind/internal/database"
 	"opsmind/internal/handler"
+	opslog "opsmind/internal/log"
 	"opsmind/internal/rag"
 	"opsmind/internal/repository"
 	"opsmind/internal/router"
@@ -38,6 +41,24 @@ func main() {
 	if err != nil {
 		slog.Error("加载配置失败", "error", err)
 		os.Exit(1)
+	}
+
+	// 初始化日志持久化：同时输出到 stdout 和旋转日志文件。
+	// 本地开发（go run ./cmd/main.go）working dir 为 server/，默认 ../logs/ → 项目根目录。
+	// Docker 部署通过 OPSMIND_LOG_DIR=./logs 覆盖（见 docker-compose.yml）。
+	// 单文件超过 10MB 自动切换到新文件。
+	logDir := os.Getenv("OPSMIND_LOG_DIR")
+	if logDir == "" {
+		logDir = filepath.Join("..", "logs")
+	}
+	logWriter, err := opslog.NewRotatingWriter(logDir, 0)
+	if err != nil {
+		slog.Warn("日志文件输出不可用，仅输出到控制台", "dir", logDir, "error", err)
+	} else {
+		slog.SetDefault(slog.New(slog.NewJSONHandler(
+			io.MultiWriter(os.Stdout, logWriter),
+			&slog.HandlerOptions{Level: slog.LevelInfo},
+		)))
 	}
 
 	// 生产模式下 JWT 密钥必须非空，否则拒绝启动。
@@ -133,7 +154,7 @@ func main() {
 
 	// 6. 初始化 Service 层
 	txManager := service.NewGormTxManager(db)
-	authService := service.NewAuthService(userRepo, db)
+	authService := service.NewAuthService(userRepo, db, cfg.JWT)
 	userService := service.NewUserService(userRepo, db)
 	roleService := service.NewRoleService(roleRepo, userRepo, db)
 	ticketService := service.NewTicketService(ticketRepo, txManager)
@@ -195,7 +216,7 @@ func main() {
 	slog.Info("后台调度器已创建")
 
 	// 9. 设置路由
-	r := router.Setup(cfg, &router.Handlers{
+	r := router.Setup(cfg, db, &router.Handlers{
 		Auth:      authHandler,
 		User:      userHandler,
 		Role:      roleHandler,

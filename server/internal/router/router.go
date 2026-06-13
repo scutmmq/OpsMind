@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
+
 	"opsmind/internal/config"
 	"opsmind/internal/handler"
 	"opsmind/internal/middleware"
@@ -40,7 +42,7 @@ type Handlers struct {
 //
 // cfg 用于设置 Gin 模式（debug/release）和中间件配置。
 // h 包含所有已初始化的 Handler，nil 字段使用占位 Handler。
-func Setup(cfg *config.AppConfig, h *Handlers) *gin.Engine {
+func Setup(cfg *config.AppConfig, db *gorm.DB, h *Handlers) *gin.Engine {
 	// 设置 Gin 模式
 	gin.SetMode(cfg.Server.Mode)
 
@@ -67,17 +69,17 @@ func Setup(cfg *config.AppConfig, h *Handlers) *gin.Engine {
 	// JWT 认证路由（需要登录但不需要 RBAC）— 修改密码和登出
 	// 直接在 /api/v1/auth 下注册，与公开路由共享前缀但附加 JWTAuth 中间件。
 	authRequired := r.Group("/api/v1/auth")
-	authRequired.Use(middleware.JWTAuth(cfg.JWT.Secret))
+	authRequired.Use(middleware.JWTAuth(db, cfg.JWT.Secret))
 	registerAuthRequiredRoutes(authRequired, h)
 
 	// 门户端路由组（需要 JWT 认证）
 	portal := r.Group("/api/v1/portal")
-	portal.Use(middleware.JWTAuth(cfg.JWT.Secret))
+	portal.Use(middleware.JWTAuth(db, cfg.JWT.Secret))
 	registerPortalRoutes(portal, h)
 
 	// 后台管理路由组（需要 JWT 认证 + RBAC 权限）
 	admin := r.Group("/api/v1/admin")
-	admin.Use(middleware.JWTAuth(cfg.JWT.Secret))
+	admin.Use(middleware.JWTAuth(db, cfg.JWT.Secret))
 	registerAdminRoutes(admin, h)
 
 	return r

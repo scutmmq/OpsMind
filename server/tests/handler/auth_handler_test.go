@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"opsmind/internal/config"
 	"opsmind/internal/database"
@@ -26,6 +27,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+// testJWTConfig 返回测试用 JWT 配置，与 config.yaml 默认值一致。
+func testJWTConfig() config.JWTConfig {
+	return config.JWTConfig{
+		Secret:        "test_secret_key_2024",
+		AccessExpire:  2 * time.Hour,
+		RefreshExpire: 168 * time.Hour,
+	}
+}
 
 // setupTestRouter 创建测试用 Gin 引擎，绑定认证路由。
 func setupTestRouter(authHandler *handler.AuthHandler) *gin.Engine {
@@ -81,7 +91,7 @@ func setupAuthHandler(t *testing.T, db *gorm.DB) *handler.AuthHandler {
 	t.Helper()
 
 	userRepo := repository.NewUserRepo(db)
-	authService := service.NewAuthService(userRepo, nil)
+	authService := service.NewAuthService(userRepo, nil, testJWTConfig())
 	return handler.NewAuthHandler(authService)
 }
 

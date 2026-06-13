@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"opsmind/internal/config"
 	"opsmind/internal/database"
@@ -31,6 +32,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+// testJWTConfig 返回测试用 JWT 配置，与 config.yaml 默认值一致。
+func testJWTConfig() config.JWTConfig {
+	return config.JWTConfig{
+		Secret:        "test_secret_key_2024",
+		AccessExpire:  2 * time.Hour,
+		RefreshExpire: 168 * time.Hour,
+	}
+}
 
 // =============================================================================
 // 测试环境
@@ -112,7 +122,7 @@ func setupAuthIntegration(t *testing.T) *authIntegrationEnv {
 
 	// 组装完整依赖链（与 main.go 一致）
 	userRepo := repository.NewUserRepo(db)
-	authService := service.NewAuthService(userRepo, db)
+	authService := service.NewAuthService(userRepo, db, testJWTConfig())
 	authHandler := handler.NewAuthHandler(authService)
 
 	// 自定义路由：

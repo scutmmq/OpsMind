@@ -72,14 +72,19 @@ func (r *UserRepo) GetByPhone(phone string) (*model.User, error) {
 // ExistsByPhone 检查手机号是否已注册。
 //
 // 为什么单独封装而非复用 GetByPhone：
-// 语义更清晰（布尔返回值 vs 结构体），且后续可优化为 SELECT 1 提升性能。
+// 语义更清晰（布尔返回值 vs 结构体），优化为 SELECT 1 提升性能。
 func (r *UserRepo) ExistsByPhone(phone string) (bool, error) {
-	var count int64
-	err := r.db.Model(&model.User{}).Where("phone = ?", phone).Count(&count).Error
+	// 输入验证
+	if phone == "" {
+		return false, nil
+	}
+
+	var id uint
+	err := r.db.Model(&model.User{}).Where("phone = ?", phone).Limit(1).Pluck("id", &id).Error
 	if err != nil {
 		return false, err
 	}
-	return count > 0, nil
+	return id != 0, nil
 }
 
 // Create 新增用户。
@@ -129,14 +134,17 @@ func (r *UserRepo) UpdateStatus(id int64, status int) error {
 
 // ExistsByUsername 检查用户名是否已存在。
 func (r *UserRepo) ExistsByUsername(username string) (bool, error) {
-	// TODO(repository/user): ExistsByUsername/Phone 可优化为 SELECT 1 LIMIT 1。
-	// COUNT(*) 在大表上成本更高，且这里只需要存在性。
-	var count int64
-	err := r.db.Model(&model.User{}).Where("username = ?", username).Count(&count).Error
+	// 输入验证
+	if username == "" {
+		return false, nil
+	}
+
+	var id uint
+	err := r.db.Model(&model.User{}).Where("username = ?", username).Limit(1).Pluck("id", &id).Error
 	if err != nil {
 		return false, err
 	}
-	return count > 0, nil
+	return id != 0, nil
 }
 
 // --- 角色/菜单/权限关联查询 ---
@@ -260,3 +268,4 @@ func (r *UserRepo) GetUserPermissions(userID int64) ([]string, error) {
 	}
 	return result, nil
 }
+

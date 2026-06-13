@@ -6,6 +6,7 @@ package jwt
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -33,11 +34,16 @@ func GenerateRefreshToken(userID int64, username string, roles []string, permiss
 
 // ParseToken 解析并验证令牌
 func ParseToken(tokenString string, secret string) (*Claims, error) {
-	// TODO(jwt): 限制 JWT alg 必须为 HS256。
-	// jwt.ParseWithClaims 会校验签名，但最好显式拒绝非预期算法，避免未来改配置时扩大攻击面。
+	// 参数验证
+	if secret == "" {
+		return nil, errors.New("secret cannot be empty")
+	}
+
+	// 解析令牌
+	// WithValidMethods 限制 alg 严格为 HS256，拒绝 HS384/HS512 及非对称算法。
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}))
 	if err != nil {
 		return nil, err
 	}
@@ -49,10 +55,17 @@ func ParseToken(tokenString string, secret string) (*Claims, error) {
 	return nil, errors.New("invalid token")
 }
 
-// generateToken 内部令牌生成函数
+// generateToken 内部令牌生成函数。
+//
+// secret 为空时直接返回错误——调用方应通过 config.JWT.Secret 注入，
+// main.go 在 release 模式下也已校验非空，此处为纵深防御。
 func generateToken(userID int64, username string, roles []string, permissions []string, tokenType string, secret string, expire time.Duration) (string, error) {
-	// TODO(jwt): 增加 issuer/audience/jti/token_version。
-	// 这些声明可支持多环境隔离、单点登出、权限变更后强制旧 token 失效。
+	if secret == "" {
+		return "", errors.New("JWT secret 不能为空")
+	}
+
+	now := time.Now()
+	// jti 使用纳秒时间戳保证唯一性，TokenVersion 预留用于权限变更后强制旧 token 失效。
 	claims := &Claims{
 		UserID:      userID,
 		Username:    username,
@@ -60,8 +73,11 @@ func generateToken(userID int64, username string, roles []string, permissions []
 		Permissions: permissions,
 		TokenType:   tokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expire)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "opsmind",
+			Subject:   fmt.Sprintf("%d", userID),
+			ID:        fmt.Sprintf("%d-%d", userID, now.UnixNano()),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(expire)),
 		},
 	}
 

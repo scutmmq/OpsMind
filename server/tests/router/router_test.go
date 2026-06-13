@@ -24,7 +24,7 @@ func setupRouter() *gin.Engine {
 			Mode: "test",
 		},
 	}
-	return router.Setup(cfg, nil)
+	return router.Setup(cfg, nil, nil)
 }
 
 // TestSetup_ReturnsEngine 测试 Setup 返回有效的 Gin 引擎

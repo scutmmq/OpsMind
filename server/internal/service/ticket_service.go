@@ -8,9 +8,10 @@
 package service
 
 import (
-	"errors"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -63,15 +64,15 @@ func (s *TicketService) CreateTicket(req request.CreateTicketRequest, userID int
 		return AppError{Code: errcode.ErrParam, Message: "紧急程度必须为 1-3"}
 	}
 
-		// 生成唯一 ticket_no：日期 + 纳秒时间戳后6位
-		// 相比 rand.Intn(10000)（仅 10000 种组合），纳秒时间戳提供百万级组合，
-		// 结合日期前缀，碰撞概率极低。后续可升级为雪花算法或 DB 序列。
-		// TODO(service/ticket): ticket_no 仍可能在高并发或多实例同纳秒场景碰撞。
-		// 建议使用数据库序列/唯一索引重试/雪花 ID，确保唯一性失败时可自动重试。
-		now := time.Now()
-		datePart := now.Format("20060102")
-		suffix := fmt.Sprintf("%06d", now.UnixNano()%1000000)
-		ticketNo := fmt.Sprintf("TK-%s-%s", datePart, suffix)
+	// 生成唯一 ticket_no：日期 + 纳秒时间戳后6位
+	// 相比 rand.Intn(10000)（仅 10000 种组合），纳秒时间戳提供百万级组合，
+	// 结合日期前缀，碰撞概率极低。后续可升级为雪花算法或 DB 序列。
+	// TODO(service/ticket): ticket_no 仍可能在高并发或多实例同纳秒场景碰撞。
+	// 建议使用数据库序列/唯一索引重试/雪花 ID，确保唯一性失败时可自动重试。
+	now := time.Now()
+	datePart := now.Format("20060102")
+	suffix := fmt.Sprintf("%06d", now.UnixNano()%1000000)
+	ticketNo := fmt.Sprintf("TK-%s-%s", datePart, suffix)
 
 	// 序列化 AffectedSystems
 	var systemsJSON datatypes.JSON
@@ -88,18 +89,18 @@ func (s *TicketService) CreateTicket(req request.CreateTicketRequest, userID int
 	}
 
 	ticket := &model.Ticket{
-		TicketNo:       ticketNo,
-		UserID:         userID,
-		Title:          req.Title,
-		Description:    req.Description,
-		Urgency:        int16(req.Urgency),
-		ImpactScope:    int16(req.ImpactScope),
+		TicketNo:        ticketNo,
+		UserID:          userID,
+		Title:           req.Title,
+		Description:     req.Description,
+		Urgency:         int16(req.Urgency),
+		ImpactScope:     int16(req.ImpactScope),
 		AffectedSystems: systemsJSON,
-		ContactPhone:   req.ContactPhone,
-		ContactEmail:   req.ContactEmail,
+		ContactPhone:    req.ContactPhone,
+		ContactEmail:    req.ContactEmail,
 		ChatContext:     chatCtxJSON,
-		Status:         1,
-		Source:         1,
+		Status:          1,
+		Source:          1,
 	}
 
 	return s.repo.Create(ticket)
@@ -229,25 +230,31 @@ func (s *TicketService) UpdateStatus(id int64, operatorID int64, req request.Upd
 		return AppError{Code: errcode.ErrParam, Message: "不支持的操作类型: " + req.Action}
 	}
 
-		// 包裹在事务中：UpdateStatus + CreateRecord 原子执行，
-		// 避免状态已变但无 timeline 记录的数据不一致。
-		return s.txManager.Transaction(func(tx *gorm.DB) error {
-			txRepo := repository.NewTicketRepo(tx)
-			// TODO(service/ticket): UpdateStatus 的 WHERE 仅按 id 更新，没有带旧 status 条件。
-			// 并发操作时可能两个操作者基于同一旧状态都成功写入记录，应改为 CAS 式状态转换。
-			if err := txRepo.UpdateStatus(id, int(newStatus)); err != nil {
-				return err
-			}
+	// 包裹在事务中：UpdateStatus + CreateRecord 原子执行，
+	// 避免状态已变但无 timeline 记录的数据不一致。
+	err = s.txManager.Transaction(func(tx *gorm.DB) error {
+		txRepo := repository.NewTicketRepo(tx)
+		// TODO(service/ticket): UpdateStatus 的 WHERE 仅按 id 更新，没有带旧 status 条件。
+		// 并发操作时可能两个操作者基于同一旧状态都成功写入记录，应改为 CAS 式状态转换。
+		if err := txRepo.UpdateStatus(id, int(newStatus)); err != nil {
+			return err
+		}
 
-			record := &model.TicketRecord{
-				TicketID:   id,
-				OperatorID: operatorID,
-				Action:     recordAction,
-				Content:    req.Result,
-			}
-			return txRepo.CreateRecord(record)
-		})
+		record := &model.TicketRecord{
+			TicketID:   id,
+			OperatorID: operatorID,
+			Action:     recordAction,
+			Content:    req.Result,
+		}
+		return txRepo.CreateRecord(record)
+	})
+	if err != nil {
+		return err
 	}
+	slog.Info("申告状态变更", "ticket_id", id, "action", recordAction,
+		"from", ticket.Status, "to", newStatus, "operator", operatorID)
+	return nil
+}
 
 // =============================================================================
 // AddRecord

@@ -7,9 +7,12 @@ package service
 import (
 	"errors"
 	"fmt"
-	"os"
+	"log/slog"
+	"sort"
+	"sync"
 	"time"
 
+	"opsmind/internal/config"
 	"opsmind/internal/dto/response"
 	"opsmind/internal/model"
 	"opsmind/internal/repository"
@@ -23,15 +26,93 @@ import (
 // AppError 是 errcode.AppError 的类型别名，供 service 包内其他文件使用。
 type AppError = errcode.AppError
 
-// AuthService 认证业务逻辑
-type AuthService struct {
-	userRepo *repository.UserRepo
-	db       *gorm.DB
+// loginFailRecord 记录单个用户的登录失败信息。
+//
+// 使用滑动窗口计数：firstAt 为窗口起始时间，count 为窗口内失败次数。
+type loginFailRecord struct {
+	count   int
+	firstAt time.Time
 }
 
-// NewAuthService 创建 AuthService 实例
-func NewAuthService(userRepo *repository.UserRepo, db *gorm.DB) *AuthService {
-	return &AuthService{userRepo: userRepo, db: db}
+// AuthService 认证业务逻辑。
+//
+// jwtCfg 在构造时注入，使得令牌有效期可通过 config 控制，
+// 而非写死 2h/7d——环境变量 OPSMIND_JWT_* 调整后无需改代码。
+type AuthService struct {
+	userRepo    *repository.UserRepo
+	db          *gorm.DB
+	jwtCfg      config.JWTConfig
+	rateLimiter *loginRateLimiter
+}
+
+// loginRateLimiter 基于内存的登录失败限流器。
+//
+// 为什么用内存而非 Redis：MVP 阶段单实例部署足够，避免引入额外依赖。
+// 限制策略：同一用户名在 window 内连续失败 maxFails 次后，后续尝试直接拒绝。
+// 成功登录会清除该用户的失败记录。
+type loginRateLimiter struct {
+	mu       sync.Mutex
+	attempts map[string]*loginFailRecord
+	maxFails int
+	window   time.Duration
+}
+
+// NewAuthService 创建 AuthService 实例。
+func NewAuthService(userRepo *repository.UserRepo, db *gorm.DB, jwtCfg config.JWTConfig) *AuthService {
+	return &AuthService{
+		userRepo: userRepo,
+		db:       db,
+		jwtCfg:   jwtCfg,
+		rateLimiter: &loginRateLimiter{
+			attempts: make(map[string]*loginFailRecord),
+			maxFails: 5,
+			window:   15 * time.Minute,
+		},
+	}
+}
+
+// allowLogin 检查是否允许该用户名尝试登录。
+//
+// 返回 nil 表示允许；返回 error 表示被限流。
+func (r *loginRateLimiter) allowLogin(username string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	rec, exists := r.attempts[username]
+	if !exists {
+		return nil
+	}
+
+	// 窗口已过期，重置
+	if time.Since(rec.firstAt) > r.window {
+		delete(r.attempts, username)
+		return nil
+	}
+
+	if rec.count >= r.maxFails {
+		return AppError{Code: 10003, Message: "登录失败次数过多，请15分钟后再试"}
+	}
+	return nil
+}
+
+// recordFail 记录一次登录失败。
+func (r *loginRateLimiter) recordFail(username string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	rec, exists := r.attempts[username]
+	if !exists || time.Since(rec.firstAt) > r.window {
+		r.attempts[username] = &loginFailRecord{count: 1, firstAt: time.Now()}
+		return
+	}
+	rec.count++
+}
+
+// recordSuccess 登录成功后清除失败记录。
+func (r *loginRateLimiter) recordSuccess(username string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.attempts, username)
 }
 
 // Login 用户登录。
@@ -40,24 +121,35 @@ func NewAuthService(userRepo *repository.UserRepo, db *gorm.DB) *AuthService {
 // 为什么密码错误和用户不存在返回相同错误码（10003）：
 // 避免用户名枚举攻击，不暴露"用户是否存在"信息。
 func (s *AuthService) Login(username, password string) (*response.LoginResponse, error) {
-	// TODO(service/auth): 增加登录失败限流/锁定策略。
-	// 目前只做 bcrypt 校验，暴力猜测会持续消耗 CPU，且没有按用户名/IP 维度的防护。
+	// 限流检查：同一用户名在 15 分钟内最多失败 5 次
+	if err := s.rateLimiter.allowLogin(username); err != nil {
+		slog.Warn("登录被限流拒绝", "username", username)
+		return nil, err
+	}
+
 	user, err := s.userRepo.GetByUsername(username)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			s.rateLimiter.recordFail(username)
+			slog.Warn("登录失败：用户不存在", "username", username)
 			return nil, AppError{Code: 10003, Message: "用户名或密码错误"}
 		}
 		return nil, fmt.Errorf("查询用户失败: %w", err)
 	}
 
 	if !hash.CheckPassword(user.PasswordHash, password) {
+		s.rateLimiter.recordFail(username)
+		slog.Warn("登录失败：密码错误", "username", username)
 		return nil, AppError{Code: 10003, Message: "用户名或密码错误"}
 	}
 
 	if user.Status == 2 {
+		slog.Warn("登录被拒：账号已冻结", "username", username, "user_id", user.ID)
 		return nil, AppError{Code: 10002, Message: "账号已被冻结"}
 	}
 
+	s.rateLimiter.recordSuccess(username)
+	slog.Info("登录成功", "user_id", user.ID, "username", username)
 	return s.buildLoginResponse(user)
 }
 
@@ -66,12 +158,15 @@ func (s *AuthService) Login(username, password string) (*response.LoginResponse,
 // 解析 refresh_token 后重新生成令牌对。
 // 为什么不直接生成新 access_token：统一走令牌对刷新，客户端逻辑更简单。
 func (s *AuthService) RefreshToken(refreshToken string) (*response.LoginResponse, error) {
-	claims, err := jwt.ParseToken(refreshToken, jwtSecret())
+	claims, err := jwt.ParseToken(refreshToken, s.jwtCfg.Secret)
 	if err != nil {
+		slog.Warn("刷新令牌无效", "error", err)
 		return nil, AppError{Code: 10001, Message: "刷新令牌无效或已过期"}
 	}
-	// TODO(service/auth): 明确校验 claims.TokenType == "refresh"。
-	// 当前 access token 只要未过期也可能走刷新流程重新签发令牌对。
+	if claims.TokenType != "refresh" {
+		slog.Warn("令牌类型错误：用 access token 刷新", "user_id", claims.UserID)
+		return nil, AppError{Code: 10001, Message: "令牌类型错误，请使用刷新令牌"}
+	}
 
 	user, err := s.userRepo.GetByID(claims.UserID)
 	if err != nil {
@@ -79,9 +174,11 @@ func (s *AuthService) RefreshToken(refreshToken string) (*response.LoginResponse
 	}
 
 	if user.Status == 2 {
+		slog.Warn("刷新令牌被拒：账号已冻结", "user_id", user.ID, "username", user.Username)
 		return nil, AppError{Code: 10002, Message: "账号已被冻结"}
 	}
 
+	slog.Info("令牌刷新成功", "user_id", user.ID)
 	return s.buildLoginResponse(user)
 }
 
@@ -96,10 +193,12 @@ func (s *AuthService) ChangePassword(userID int64, oldPwd, newPwd string) error 
 	}
 
 	if !hash.CheckPassword(user.PasswordHash, oldPwd) {
+		slog.Warn("修改密码失败：旧密码错误", "user_id", userID)
 		return AppError{Code: 10003, Message: "旧密码错误"}
 	}
 
 	if err := hash.ValidatePassword(newPwd); err != nil {
+		slog.Warn("修改密码失败：新密码不符合策略", "user_id", userID)
 		return AppError{Code: 10003, Message: err.Error()}
 	}
 
@@ -116,6 +215,7 @@ func (s *AuthService) ChangePassword(userID int64, oldPwd, newPwd string) error 
 		return fmt.Errorf("更新密码失败: %w", err)
 	}
 
+	slog.Info("密码修改成功", "user_id", userID)
 	return nil
 }
 
@@ -124,8 +224,6 @@ func (s *AuthService) ChangePassword(userID int64, oldPwd, newPwd string) error 
 // 查询用户角色、权限、菜单树，组装完整的 LoginResponse。
 // 菜单树构建思路：先从全部菜单中分离一级菜单，再递归挂载子菜单。
 func (s *AuthService) buildLoginResponse(user *model.User) (*response.LoginResponse, error) {
-	// TODO(service/auth): 访问令牌和刷新令牌有效期应读取 config.JWT，而不是写死 2h/7d。
-	// 当前配置项存在但没有贯穿到 AuthService，环境变量调整不会生效。
 	// 查询用户角色
 	roles, err := s.userRepo.GetUserRoles(user.ID)
 	if err != nil {
@@ -144,14 +242,14 @@ func (s *AuthService) buildLoginResponse(user *model.User) (*response.LoginRespo
 	}
 
 	// 查询用户菜单树
-	menuTree, err := s.buildMenuTree(user.ID, roles)
+	menuTree, err := s.buildMenuTree(roles)
 	if err != nil {
 		return nil, fmt.Errorf("查询用户菜单失败: %w", err)
 	}
 
 	accessToken, err := jwt.GenerateAccessToken(
 		user.ID, user.Username, roleNames, permissions,
-		jwtSecret(), 2*time.Hour,
+		s.jwtCfg.Secret, s.jwtCfg.AccessExpire,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("生成 access_token 失败: %w", err)
@@ -159,7 +257,7 @@ func (s *AuthService) buildLoginResponse(user *model.User) (*response.LoginRespo
 
 	refreshToken, err := jwt.GenerateRefreshToken(
 		user.ID, user.Username, roleNames, permissions,
-		jwtSecret(), 7*24*time.Hour,
+		s.jwtCfg.Secret, s.jwtCfg.RefreshExpire,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("生成 refresh_token 失败: %w", err)
@@ -188,7 +286,7 @@ func (s *AuthService) buildLoginResponse(user *model.User) (*response.LoginRespo
 // 树构建是展示逻辑，属于业务层的职责。Repository 只负责数据查询。
 //
 // 系统管理员自动获得全部菜单。
-func (s *AuthService) buildMenuTree(userID int64, roles []model.Role) ([]response.MenuItem, error) {
+func (s *AuthService) buildMenuTree(roles []model.Role) ([]response.MenuItem, error) {
 	// 判断是否为系统管理员
 	isAdmin := false
 	for _, role := range roles {
@@ -233,38 +331,43 @@ func (s *AuthService) buildMenuTree(userID int64, roles []model.Role) ([]respons
 
 // buildTree 递归构建菜单树。
 //
-// parentID=0 表示一级菜单，子菜单通过 parentID 关联。
+// parentID=0 表示一级菜单,子菜单通过 parentID 关联。
 func buildTree(menus []model.Menu, parentID int64) []response.MenuItem {
-	// TODO(service/auth): buildTree 每层都会扫描完整 menus，菜单数量增大后是 O(n²)。
-	// 可先按 parent_id 建 map，再递归组装，顺便保证 sort_order 稳定。
-	var result []response.MenuItem
+	// 按 parent_id 构建索引 map，避免每层都扫描完整 menus
+	childrenMap := make(map[int64][]model.Menu)
 	for _, m := range menus {
-		if m.ParentID == parentID {
-			item := response.MenuItem{
-				ID:        m.ID,
-				Name:      m.Name,
-				Path:      m.Path,
-				Icon:      m.Icon,
-				ParentID:  m.ParentID,
-				SortOrder: m.SortOrder,
-				Type:      m.Type,
-				Children:  buildTree(menus, m.ID),
-			}
-			result = append(result, item)
-		}
+		childrenMap[m.ParentID] = append(childrenMap[m.ParentID], m)
 	}
-	return result
+
+	return buildTreeWithMap(childrenMap, parentID)
 }
 
-// jwtSecret 从环境变量读取 JWT 密钥。
-//
-// 为什么提供默认值：本地开发环境便利性。
-// 生产环境必须通过环境变量 OPSMIND_JWT_SECRET 覆盖。
-func jwtSecret() string {
-	// TODO(service/auth): jwtSecret 绕过 config.Load，和 main 中注入 JWTAuth 的 secret 来源不一致。
-	// 应把 secret 作为 AuthService 依赖注入，避免测试、开发、生产出现两套密钥来源。
-	if s := os.Getenv("OPSMIND_JWT_SECRET"); s != "" {
-		return s
+// buildTreeWithMap 使用预构建的 map 递归构建树结构
+func buildTreeWithMap(childrenMap map[int64][]model.Menu, parentID int64) []response.MenuItem {
+	children := childrenMap[parentID]
+	if len(children) == 0 {
+		return []response.MenuItem{}
 	}
-	return "opsmind_dev_secret_key_2024"
+
+	result := make([]response.MenuItem, 0, len(children))
+	for _, m := range children {
+		item := response.MenuItem{
+			ID:        m.ID,
+			Name:      m.Name,
+			Path:      m.Path,
+			Icon:      m.Icon,
+			ParentID:  m.ParentID,
+			SortOrder: m.SortOrder,
+			Type:      m.Type,
+			Children:  buildTreeWithMap(childrenMap, m.ID),
+		}
+		result = append(result, item)
+	}
+
+	// 按 sort_order 排序，保证稳定的输出顺序
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].SortOrder < result[j].SortOrder
+	})
+
+	return result
 }

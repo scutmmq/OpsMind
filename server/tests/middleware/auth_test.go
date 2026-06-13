@@ -31,7 +31,7 @@ func setupAuthRouter() *gin.Engine {
 	r := gin.New()
 
 	protected := r.Group("/api/v1/protected")
-	protected.Use(middleware.JWTAuth(testSecret))
+	protected.Use(middleware.JWTAuth(nil, testSecret))
 	protected.GET("/me", func(c *gin.Context) {
 		user, exists := c.Get("currentUser")
 		if !exists {

@@ -13,15 +13,15 @@
 
 ### JWT 令牌安全
 
-- 🔴 [pkg/jwt/jwt.go](/server/pkg/jwt/jwt.go) — 限制 alg 必须为 HS256（`ParseWithClaims` 未指定 `WithValidMethods`）
-- 🔴 [pkg/jwt/jwt.go](/server/pkg/jwt/jwt.go) — secret 为空时应在构造阶段拒绝启动，而非运行时静默
-- 🔴⭐ [service/auth_service.go](/server/internal/service/auth_service.go) — jwtSecret 硬编码默认值 `"opsmind_dev_secret_key_2024"`，生产环境若遗漏环境变量则令牌可伪造
-- 🔴 [service/auth_service.go](/server/internal/service/auth_service.go) — token 有效期写死 2h/7d，应从配置读取
-- 🟡 [service/auth_service.go](/server/internal/service/auth_service.go) — RefreshToken 需校验 `claims.TokenType == "refresh"`
-- 🟡 [service/auth_service.go](/server/internal/service/auth_service.go) — 增加登录失败限流/锁定（当前无任何频率限制）
-- 🟡 [middleware/auth.go](/server/internal/middleware/auth.go) — JWT 只校验签名和过期，不检查用户冻结/权限撤销
-- 🟡 [middleware/auth.go](/server/internal/middleware/auth.go) — secret 为空时应在中间件构造阶段拒绝启动
-- 🟢 [pkg/jwt/jwt.go](/server/pkg/jwt/jwt.go) — 增加 issuer/audience/jti/token_version 标准声明
+- ✅ [pkg/jwt/jwt.go](/server/pkg/jwt/jwt.go) — ~~alg 限制不严格~~ — 已改用 `WithValidMethods([]string{"HS256"})` 严格限制
+- ✅ [pkg/jwt/jwt.go](/server/pkg/jwt/jwt.go) — ~~secret 为空时静默~~ — `generateToken` 已增加 `secret == ""` 显式校验，与 `ParseToken` 形成纵深防御
+- ✅ [service/auth_service.go](/server/internal/service/auth_service.go) — ~~jwtSecret 硬编码默认值~~ — 已移除，改为构造注入 `config.JWT.Secret`
+- ✅ [service/auth_service.go](/server/internal/service/auth_service.go) — ~~token 有效期写死 2h/7d~~ — 已改为读取 `s.jwtCfg.AccessExpire` / `s.jwtCfg.RefreshExpire`
+- ✅ [service/auth_service.go](/server/internal/service/auth_service.go) — ~~RefreshToken 需校验 TokenType~~ — 已增加 `claims.TokenType != "refresh"` 校验
+- ✅ [service/auth_service.go](/server/internal/service/auth_service.go) — ~~增加登录失败限流~~ — 已实现内存限流器（5 次/15 分钟滑动窗口）
+- ✅ [middleware/auth.go](/server/internal/middleware/auth.go) — ~~JWT 不检查用户冻结~~ — `JWTAuth` 新增 `db` 参数，解析后查询用户状态（冻结/存在性）
+- ✅ [middleware/auth.go](/server/internal/middleware/auth.go) — ~~secret 为空时中间件静默~~ — 增加 secret 空值检查，拒绝所有请求并返回明确错误
+- ✅ [pkg/jwt/jwt.go](/server/pkg/jwt/jwt.go) — ~~缺少标准声明~~ — 已增加 Issuer/Subject/ID(jti)/IssuedAt
 
 ### 中间件安全
 
@@ -367,7 +367,7 @@
 
 | 业务流程 | 🔴 P0 | 🟡 P1 | 🟢 P2 | 合计 |
 |----------|-------|-------|-------|------|
-| 1. 认证与授权 | 4 | 7 | 4 | 15 |
+| 1. 认证与授权 | 0 | 3 | 3 | 6 |
 | 2. 智能问答 RAG | 5 | 14 | 5 | 24 |
 | 3. 知识库与文档管理 | 5 | 14 | 6 | 25 |
 | 4. 申告管理 | 5 | 5 | 2 | 12 |
@@ -377,7 +377,7 @@
 | 8. 基础设施与部署 | 11 | 12 | 5 | 28 |
 | 9. 前端架构与交互 | 4 | 16 | 6 | 26 |
 | 10. 整表空数据 | 3 | 1 | 0 | 4 |
-| **合计** | **52** | **88** | **34** | **174** |
+| **合计** | **48** | **84** | **33** | **165** |
 
 > ⭐ 标记项为本次再审计新发现问题（共 31 项，含 18 项 P0）。
 
@@ -404,4 +404,4 @@
 
 ---
 
-**最后更新**：2026-06-13（全量再审计）
+**最后更新**：2026-06-13（全量再审计 + 认证模块 9 项全部清零）
