@@ -75,18 +75,18 @@
       <div class="form-actions" v-if="article?.status === 4">
         <button class="btn-disable" @click="handleDisable">停用</button>
       </div>
-      <div class="form-actions" v-if="article?.status === 0">
-        <button class="btn-save" @click="handleEnable">恢复为草稿</button>
+      <div class="form-actions" v-if="article?.status === 5">
+        <button class="btn-save" @click="handleEnable">启用</button>
       </div>
 
       <!-- 处理状态（仅文档上传文章显示） -->
       <div v-if="article?.source_type === 2 && article?.process_status" class="process-info">
         <h4>文档处理状态</h4>
-        <span :class="['process-tag', processStatusClass(article.process_status)]">
-          {{ processStatusText(article.process_status) }}
+        <span :class="['process-tag', processClass(article.process_status)]">
+          {{ processText(article.process_status) }}
         </span>
         <span v-if="article.process_error" class="process-error">{{ article.process_error }}</span>
-        <button v-if="article.process_status === 4" class="btn-retry" @click="handleRetryDocument">重试处理</button>
+        <button v-if="article.process_status === 'failed'" class="btn-retry" @click="handleRetryDocument">重试处理</button>
       </div>
     </div>
 
@@ -149,8 +149,6 @@
 <script setup lang="ts">
 // TODO(admin/KnowledgeEdit): 组件超过 400 行 — 应拆分为文档上传区域、元信息表单、处理状态展示等子组件。
 // TODO(admin/KnowledgeEdit): fetchArticle/fetchKBs 失败时仅 console.error，无用户可见提示，无 loading 状态。
-// TODO(admin/KnowledgeEdit): 当前页面按 v2 title/content 构造表单，但后端仍使用 question/answer。
-// 保存前需要明确字段映射层，或先完成后端 DTO/模型迁移。
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
@@ -158,7 +156,7 @@ import {
   submitReview, reviewArticle, publishArticle, disableArticle, enableArticle,
   uploadDocuments, retryDocument,
 } from '@/api/knowledge'
-import { articleStatusClass as statusClass, articleStatusText as statusText } from '@/utils/knowledge'
+import { articleStatusClass as statusClass, articleStatusText as statusText, processClass, processText } from '@/utils/knowledge'
 
 const router = useRouter()
 const route = useRoute()
@@ -167,7 +165,7 @@ const kbIdFromQuery = route.query.kb_id as string
 
 const isNew = computed(() => !articleId || articleId === 'new')
 const isReview = computed(() => article.value?.status === 2)
-const canEdit = computed(() => isNew.value || article.value?.status === 1 || article.value?.status === 5)
+const canEdit = computed(() => isNew.value || article.value?.status === 1 || article.value?.status === 6)
 
 // v2: 输入模式（仅新建时可用）
 const inputMode = ref<'manual' | 'upload'>('manual')
@@ -200,7 +198,7 @@ onMounted(async () => {
 })
 
 const fetchKBs = async () => {
-  try { const res = await listKnowledgeBases(); kbList.value = (res.data as any).items || (res as any).items || [] } catch (e) { console.error(e); alert('加载知识库列表失败') }
+  try { const res = await listKnowledgeBases(); kbList.value = Array.isArray(res.data) ? res.data : [] } catch (e) { console.error(e); alert('加载知识库列表失败') }
 }
 const fetchArticle = async () => {
   try {
@@ -284,7 +282,7 @@ async function handleUpload() {
   uploadResult.value = null
   try {
     const fd = new FormData()
-    for (const f of uploadFiles.value) fd.append('files', f)
+    for (const f of uploadFiles.value) fd.append('file', f)
     await uploadDocuments(form.value.kb_id, fd)
     uploadResult.value = { success: true, message: `${uploadFiles.value.length} 个文件上传成功，将在后台异步处理` }
     uploadFiles.value = []
@@ -308,19 +306,7 @@ function formatFileSize(bytes: number) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-// v2 处理状态辅助
-function processStatusClass(s: number) {
-  const m: Record<number, string> = { 1: 'pending', 2: 'parsing', 3: 'embedding', 4: 'completed', 5: 'failed' }
-  return m[s] || ''
-}
-function processStatusText(s: number) {
-  // TODO(admin/KnowledgeEdit): process_status 后端计划返回字符串 pending/parsing/chunking/embedding/completed/failed。
-  // 这里按数字映射会和接口文档不一致。
-  const m: Record<number, string> = { 0: '待处理', 1: '解析中', 2: '分块中', 3: '向量化中', 4: '已完成', 5: '失败' }
-  return m[s] || '未知'
-}
-
-// statusClass/statusText → @/utils/knowledge.ts
+// statusClass/statusText/processClass/processText → @/utils/knowledge.ts
 </script>
 
 <style scoped>

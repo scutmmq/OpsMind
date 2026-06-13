@@ -14,7 +14,7 @@
             <td>{{ log.action }}</td>
             <td>{{ log.target_type }}{{ log.target_id ? '#' + log.target_id : '' }}</td>
             <td class="detail-cell">{{ log.detail || '-' }}</td>
-            <td>{{ log.ip || '-' }}</td>
+            <td>{{ log.ip_address || '-' }}</td>
             <td class="time-cell">{{ formatTime(log.created_at) }}</td>
           </tr>
         </tbody>

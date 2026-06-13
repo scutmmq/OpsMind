@@ -61,13 +61,13 @@ describe('actionText', () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe('articleStatusText', () => {
-  it('v2 状态映射 (0-5)', () => {
-    expect(articleStatusText(0)).toBe('已停用')
+  it('v2 状态映射 (1-6)', () => {
     expect(articleStatusText(1)).toBe('草稿')
     expect(articleStatusText(2)).toBe('待审核')
     expect(articleStatusText(3)).toBe('已通过')
     expect(articleStatusText(4)).toBe('已发布')
-    expect(articleStatusText(5)).toBe('已驳回')
+    expect(articleStatusText(5)).toBe('已停用')
+    expect(articleStatusText(6)).toBe('已驳回')
   })
 })
 
@@ -76,25 +76,25 @@ describe('articleStatusClass', () => {
     expect(articleStatusClass(1)).toBe('draft')
     expect(articleStatusClass(2)).toBe('pending')
     expect(articleStatusClass(4)).toBe('published')
-    expect(articleStatusClass(5)).toBe('rejected')
+    expect(articleStatusClass(6)).toBe('rejected')
   })
 })
 
 describe('processText', () => {
   it('undefined→"-"', () => { expect(processText(undefined)).toBe('-') })
-  it('0→待处理, 4→已完成, 5→失败', () => {
-    expect(processText(0)).toBe('待处理')
-    expect(processText(4)).toBe('已完成')
-    expect(processText(5)).toBe('失败')
+  it('pending→待处理, completed→已完成, failed→失败', () => {
+    expect(processText('pending')).toBe('待处理')
+    expect(processText('completed')).toBe('已完成')
+    expect(processText('failed')).toBe('失败')
   })
 })
 
 describe('processClass', () => {
   it('undefined→""', () => { expect(processClass(undefined)).toBe('') })
-  it('1→pending, 4→completed, 5→failed', () => {
-    expect(processClass(1)).toBe('pending')
-    expect(processClass(4)).toBe('completed')
-    expect(processClass(5)).toBe('failed')
+  it('parsing→pending, completed→completed, failed→failed', () => {
+    expect(processClass('parsing')).toBe('pending')
+    expect(processClass('completed')).toBe('completed')
+    expect(processClass('failed')).toBe('failed')
   })
 })
 

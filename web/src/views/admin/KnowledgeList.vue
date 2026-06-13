@@ -36,8 +36,8 @@
               <option :value="2">待审核</option>
               <option :value="3">已通过</option>
               <option :value="4">已发布</option>
-              <option :value="5">已驳回</option>
-              <option :value="0">已停用</option>
+              <option :value="5">已停用</option>
+              <option :value="6">已驳回</option>
             </select>
             <button v-if="selectedKB" class="btn-add-article" @click="goCreate">+ 新建文章</button>
           </div>
@@ -68,9 +68,9 @@
                 <button v-if="a.status===2" class="btn-sm btn-primary" @click="goEdit(a.id)">审核</button>
                 <button v-if="a.status===3" class="btn-sm btn-success" @click="handlePublish(a.id)">发布</button>
                 <button v-if="a.status===4" class="btn-sm btn-warning" @click="handleDisable(a.id)">停用</button>
-                <button v-if="a.status===0" class="btn-sm btn-success" @click="handleEnable(a.id)">恢复</button>
-                <button v-if="a.source_type===2 && a.process_status===5" class="btn-sm btn-warning" @click="handleRetryDocument(a.id)">重试</button>
-                <button v-if="a.status===1||a.status===5" class="btn-sm btn-default" @click="goEdit(a.id)">编辑</button>
+                <button v-if="a.status===5" class="btn-sm btn-success" @click="handleEnable(a.id)">启用</button>
+                <button v-if="a.source_type===2 && a.process_status==='failed'" class="btn-sm btn-warning" @click="handleRetryDocument(a.id)">重试</button>
+                <button v-if="a.status===1||a.status===6" class="btn-sm btn-default" @click="goEdit(a.id)">编辑</button>
               </td>
             </tr>
           </tbody>
@@ -107,7 +107,7 @@ import { listKnowledgeBases, createKnowledgeBase, listArticles, submitReview, pu
 
 interface KB { id: number; name: string }
 // v2: 统一文章模型字段
-interface Article { id: number; title: string; question?: string; content: string; category?: string; status: number; source_type: number; word_count?: number; process_status?: number; updated_at?: string }
+interface Article { id: number; title: string; content: string; category?: string; status: number; source_type: number; word_count?: number; process_status?: string; updated_at?: string }
 
 const router = useRouter()
 const kbList = ref<KB[]>([])
@@ -125,7 +125,7 @@ const toast = useToast()
 onMounted(() => { fetchKBs() })
 
 const fetchKBs = async () => {
-  try { const res = await listKnowledgeBases(); kbList.value = (res.data as any).items || (res as any).items || [] } catch (e) { console.error(e); toast.showToast('加载知识库列表失败', 'error') }
+  try { const res = await listKnowledgeBases(); kbList.value = Array.isArray(res.data) ? res.data : [] } catch (e) { console.error(e); toast.showToast('加载知识库列表失败', 'error') }
 }
 const selectKB = (kb: KB) => { selectedKB.value = kb; currentPage.value = 1; fetchArticles() }
 const fetchArticles = async () => {
@@ -135,8 +135,8 @@ const fetchArticles = async () => {
     if (statusFilter.value !== -1) params.status = statusFilter.value
     if (sourceTypeFilter.value !== -1) params.source_type = sourceTypeFilter.value
     const res = await listArticles(selectedKB.value.id, params)
-    const list = Array.isArray(res.data) ? res.data : (res.data.items || [])
-    articles.value = list; total.value = res.data.total || list.length || 0
+    const list = Array.isArray(res.data) ? res.data : ((res.data as any).articles || (res.data as any).items || [])
+    articles.value = list; total.value = (res as any).total || list.length || 0
   } catch (e) { console.error(e); toast.showToast('加载文章列表失败', 'error') }
 }
 const handleCreateKB = async () => {

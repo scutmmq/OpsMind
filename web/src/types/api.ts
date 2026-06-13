@@ -17,10 +17,10 @@ export interface ApiResponse<T> {
   data: T
 }
 
-/** 分页响应 — 列表类接口统一使用此格式 */
+/** 分页响应 — 后端 SuccessWithPage 把 items 放在 data，total/page/page_size 与 code/message 同层 */
 export interface PageResponse<T> {
-  // TODO(types/api): 后端 SuccessWithPage 实际把 items 放在 data，total/page/page_size 在顶层。
-  // 当前 PageResponse<T> 与真实响应结构不一致，是大量 any 解包的根源。
   items: T[]
   total: number
+  page: number
+  page_size: number
 }

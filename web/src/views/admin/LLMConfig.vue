@@ -147,7 +147,7 @@
           <p class="test-message">
             {{ testResult.success ? `连接成功 — 模型: ${testResult.model}` : '连接失败' }}
           </p>
-          <p v-if="testResult.success" class="test-latency">延迟: {{ testResult.latency }}ms</p>
+          <p v-if="testResult.success" class="test-latency">延迟: {{ testResult.latency_ms }}ms</p>
         </div>
         <div class="modal-actions">
           <button class="btn-cancel" @click="showTestResult = false">关闭</button>
@@ -184,7 +184,7 @@ const deleting = ref(false)
 const testing = ref(false)
 const editingId = ref<number | null>(null)
 const deleteTarget = ref<LLMConfigItem | null>(null)
-const testResult = ref<{ success: boolean; model?: string; latency?: number } | null>(null)
+const testResult = ref<{ success: boolean; model?: string; latency_ms?: number } | null>(null)
 const toast = useToast()
 
 const form = reactive({
@@ -304,9 +304,7 @@ async function handleTestConnection(cfg: LLMConfigItem) {
   try {
     const res = await testLLMConnection(cfg.id)
     const data = (res as any).data || res
-    // TODO(admin/LLMConfig): 后端返回 latency_ms，当前读取 data.latency 会显示 0。
-    // API 类型和页面展示字段需要同步修正。
-    testResult.value = { success: true, model: data.model || cfg.llm_model, latency: data.latency || 0 }
+    testResult.value = { success: true, model: data.model || cfg.llm_model, latency_ms: data.latency_ms || 0 }
   } catch (e: any) {
     testResult.value = { success: false }
   } finally {

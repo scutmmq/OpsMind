@@ -6,36 +6,41 @@
 
 /** 知识文章状态 */
 export enum KnowledgeStatus {
-  // TODO(types/knowledge): 知识状态枚举从 0 开始，与后端 ArticleStatusDraft=1 不一致。
-  // 需要以前后端共享的 docs/API/knowledge.md 为准统一。
-  Draft = 0,
-  PendingReview = 1,
-  Published = 2,
-  Disabled = 3,
+  Draft = 1,
+  PendingReview = 2,
+  Approved = 3,
+  Published = 4,
+  Disabled = 5,
+  Rejected = 6,
 }
 
-/** 文档处理状态 */
-export enum ProcessStatus {
-  // TODO(types/knowledge): 文档处理状态在 API 文档中是字符串，不是数字枚举。
-  // 前端应改为 string union，避免和后端 process_status 绑定错位。
-  Pending = 0,
-  Processing = 1,
-  Completed = 2,
-  Failed = 3,
-}
+/** 文档处理状态（后端返回字符串） */
+export const ProcessStatus = {
+  Pending: 'pending',
+  Parsing: 'parsing',
+  Chunking: 'chunking',
+  Embedding: 'embedding',
+  Completed: 'completed',
+  Failed: 'failed',
+} as const
+export type ProcessStatus = (typeof ProcessStatus)[keyof typeof ProcessStatus]
 
 /** 知识文章状态文本映射 */
 export const KNOWLEDGE_STATUS_TEXT: Record<number, string> = {
   [KnowledgeStatus.Draft]: '草稿',
   [KnowledgeStatus.PendingReview]: '待审核',
+  [KnowledgeStatus.Approved]: '已通过',
   [KnowledgeStatus.Published]: '已发布',
-  [KnowledgeStatus.Disabled]: '已禁用',
+  [KnowledgeStatus.Disabled]: '已停用',
+  [KnowledgeStatus.Rejected]: '已驳回',
 }
 
 /** 文档处理状态文本映射 */
-export const PROCESS_STATUS_TEXT: Record<number, string> = {
+export const PROCESS_STATUS_TEXT: Record<string, string> = {
   [ProcessStatus.Pending]: '待处理',
-  [ProcessStatus.Processing]: '处理中',
+  [ProcessStatus.Parsing]: '解析中',
+  [ProcessStatus.Chunking]: '分块中',
+  [ProcessStatus.Embedding]: '向量化中',
   [ProcessStatus.Completed]: '已完成',
   [ProcessStatus.Failed]: '失败',
 }

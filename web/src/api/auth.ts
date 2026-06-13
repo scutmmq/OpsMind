@@ -37,13 +37,9 @@ export function refreshToken(refresh_token: string) {
 }
 
 export function changePassword(data: ChangePasswordParams) {
-  // TODO(api/auth): 后端路由是 /api/v1/auth/me/change-password，不是 /api/v1/auth/change-password。
-  // 当前调用会命中公开 auth 前缀之外的不存在路由。
   return request.post<ApiResponse<null>>('/api/v1/auth/change-password', data)
 }
 
 export function logout() {
-  // TODO(api/auth): 后端路由是 /api/v1/auth/me/logout。
-  // 前后端路径不一致会导致退出接口 404，虽然客户端也可本地清 token。
   return request.post<ApiResponse<null>>('/api/v1/auth/logout')
 }

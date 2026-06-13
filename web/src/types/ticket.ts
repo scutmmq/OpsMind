@@ -13,13 +13,11 @@ export enum TicketUrgency {
 
 /** 申告状态 */
 export enum TicketStatus {
-  // TODO(types/ticket): 申告状态从 0 开始，与后端 TicketStatusPending=1 不一致。
-  // 该枚举若被组件复用会导致状态文案和颜色错位。
-  Pending = 0,
-  Processing = 1,
-  NeedSupplement = 2,
-  Resolved = 3,
-  Closed = 4,
+  Pending = 1,
+  Processing = 2,
+  NeedSupplement = 3,
+  Resolved = 4,
+  Closed = 5,
 }
 
 /** 申告状态文本映射 */

@@ -60,9 +60,7 @@ export interface UpdateLLMConfigParams {
 export interface TestConnectionResponse {
   success: boolean
   model: string
-  // TODO(api/llm_config): 后端返回 latency_ms，前端类型写 latency。
-  // 需要统一字段，否则连接测试弹窗延迟显示始终为 0。
-  latency: number
+  latency_ms: number
 }
 
 // =============================================================================
