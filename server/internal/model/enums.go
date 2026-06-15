@@ -45,6 +45,10 @@ const (
 )
 
 // 知识文章状态
+//
+// TODO(model/enums): 状态编号与 docs/API/knowledge.md 不一致——文档定义「已停用(5)」，
+// 代码中 Disabled=0。API 文档的生命周期图缺少 Disabled=0 状态的完整描述。
+// 需统一编号方案并更新文档。
 const (
 	ArticleStatusDisabled   int16 = 0 // 已停用
 	ArticleStatusDraft      int16 = 1 // 草稿

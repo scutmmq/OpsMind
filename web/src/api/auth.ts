@@ -37,9 +37,9 @@ export function refreshToken(refresh_token: string) {
 }
 
 export function changePassword(data: ChangePasswordParams) {
-  return request.post<ApiResponse<null>>('/api/v1/auth/change-password', data)
+  return request.post<ApiResponse<null>>('/api/v1/auth/me/change-password', data)
 }
 
 export function logout() {
-  return request.post<ApiResponse<null>>('/api/v1/auth/logout')
+  return request.post<ApiResponse<null>>('/api/v1/auth/me/logout')
 }

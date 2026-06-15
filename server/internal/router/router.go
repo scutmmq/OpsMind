@@ -67,8 +67,8 @@ func Setup(cfg *config.AppConfig, db *gorm.DB, h *Handlers) *gin.Engine {
 	registerPublicRoutes(public, h)
 
 	// JWT 认证路由（需要登录但不需要 RBAC）— 修改密码和登出
-	// 直接在 /api/v1/auth 下注册，与公开路由共享前缀但附加 JWTAuth 中间件。
-	authRequired := r.Group("/api/v1/auth")
+	// 使用 /api/v1/auth/me 子路由组，与 docs/API/auth.md 文档一致。
+	authRequired := r.Group("/api/v1/auth/me")
 	authRequired.Use(middleware.JWTAuth(db, cfg.JWT.Secret))
 	registerAuthRequiredRoutes(authRequired, h)
 
@@ -98,10 +98,11 @@ func registerPublicRoutes(rg *gin.RouterGroup, h *Handlers) {
 	}
 }
 
-// registerAuthRequiredRoutes 注册需要 JWT 认证的 auth 路由。
+// registerAuthRequiredRoutes 注册需要 JWT 认证的 auth/me 路由。
 //
-// 与 registerPublicRoutes 使用同样的 /api/v1/auth 前缀但附加 JWTAuth 中间件，
-// 原因是 ChangePassword handler 需要 JWT 中间件注入的 userID 来识别当前用户。
+// 使用 /api/v1/auth/me 子路由组（含 JWTAuth 中间件），
+// 与 docs/API/auth.md 文档路径 `/api/v1/auth/me/change-password` 和 `/api/v1/auth/me/logout` 一致。
+// ChangePassword handler 需要 JWT 中间件注入的 userID 来识别当前用户。
 func registerAuthRequiredRoutes(rg *gin.RouterGroup, h *Handlers) {
 	if h != nil && h.Auth != nil {
 		rg.POST("/change-password", h.Auth.ChangePassword)
