@@ -33,7 +33,6 @@ type Chunker struct {
 // chunkSize 为目标分块大小（字符数），chunkOverlap 为重叠量。
 // 如果 chunkOverlap ≥ chunkSize，将自动 clamp 到 chunkSize/2，
 // 避免产生 O(N²) 级别的海量重叠分块。
-//
 func NewChunker(chunkSize, chunkOverlap int) *Chunker {
 	if chunkSize <= 0 {
 		chunkSize = 1000 // 默认分块大小
@@ -52,13 +51,14 @@ func NewChunker(chunkSize, chunkOverlap int) *Chunker {
 
 // Split 将文本按递归优先级分割为分块列表。
 //
-// 空字符串返回空切片。
+// 空字符串返回空切片。分割前对文本做归一化处理（全角→半角、多余空白合并），
+// 提升 BM25 分词品质和 embedding 稳定性。
 func (c *Chunker) Split(text string) []string {
-	// TODO(rag/chunker): 分块前应做文本归一化，如统一换行、去除连续空白、保留 Markdown 标题层级。
-	// 这会提升 BM25 分词质量和 embedding 稳定性。
 	if len(text) == 0 {
 		return nil
 	}
+
+	text = normalizeText(text)
 
 	// 文本不超过 chunkSize 时直接返回
 	if utf8.RuneCountInString(text) <= c.ChunkSize {
@@ -69,6 +69,56 @@ func (c *Chunker) Split(text string) []string {
 	separators := []string{"\n\n", "\n", "。", ".", " ", ""}
 	chunks := c.splitRecursive(text, separators)
 	return chunks
+}
+
+// normalizeText 对文本做归一化处理。
+//
+// 为什么需要归一化：
+// 全角字符在半角环境下分词效果差，连续空白浪费 token 预算，
+// 统一处理后 BM25 分词更一致，embedding 向量更稳定。
+func normalizeText(text string) string {
+	// 统一换行符：\r\n → \n，\r → \n
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+
+	// 合并连续空白行（>2 个连续换行缩减为 2 个）
+	for strings.Contains(text, "\n\n\n") {
+		text = strings.ReplaceAll(text, "\n\n\n", "\n\n")
+	}
+
+	// 合并连续水平空白（空格/制表符缩为单个空格）
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) > 0 {
+			lines[i] = strings.Join(fields, " ")
+		} else {
+			lines[i] = ""
+		}
+	}
+	text = strings.Join(lines, "\n")
+
+	// 全角字母数字→半角（中文环境常见复制粘贴问题）
+	text = normalizeFullwidth(text)
+
+	return strings.TrimSpace(text)
+}
+
+// normalizeFullwidth 将全角 ASCII 字符转换为半角。
+//
+// 全角范围 FF01-FF5E 对应半角 21-7E（偏移 0xFEE0）。
+// 全角空格 3000 → 半角空格 0020。
+func normalizeFullwidth(s string) string {
+	runes := []rune(s)
+	for i, r := range runes {
+		switch {
+		case r == '　':
+			runes[i] = ' '
+		case r >= '！' && r <= '～':
+			runes[i] = r - 0xFEE0
+		}
+	}
+	return string(runes)
 }
 
 // splitRecursive 按分隔符递归分割文本。
@@ -86,15 +136,12 @@ func (c *Chunker) splitRecursive(text string, separators []string) []string {
 
 	var splits []string
 	if sep == "" {
-		// 字符级硬切分：按 ChunkSize 切分，保留 overlap
 		splits = c.splitByRunes(text)
 	} else {
 		parts := strings.Split(text, sep)
 		if len(parts) == 1 {
-			// 当前分隔符无法分割，尝试下一级
 			return c.splitRecursive(text, remainingSeps)
 		}
-		// 对每个部分用剩余分隔符递归处理
 		for _, part := range parts {
 			if len(part) == 0 {
 				continue
@@ -140,9 +187,10 @@ func (c *Chunker) splitByRunes(text string) []string {
 //
 // 为什么需要合并：递归分割可能产生很多小块（特别是按句号分割时），
 // 合并后可以控制在 chunkSize 附近，减少 embedding API 调用次数。
+//
+// 合并时保留 chunkOverlap：每个合并块尾部与下一块的头部有重叠，
+// 从上一块的尾部截取 overlap 长度的字符作为下一块的前缀。
 func (c *Chunker) mergeSplits(splits []string) []string {
-	// TODO(rag/chunker): mergeSplits 没有实现 chunkOverlap，只有字符级硬切分才有重叠。
-	// 段落/句子级分块同样需要 overlap，否则边界信息仍可能丢失。
 	if len(splits) <= 1 {
 		return splits
 	}
@@ -161,6 +209,15 @@ func (c *Chunker) mergeSplits(splits []string) []string {
 			current = combined
 		} else {
 			merged = append(merged, current)
+
+			// 从当前块尾部截取 overlap 作为下一块的前缀
+			if c.ChunkOverlap > 0 {
+				runes := []rune(current)
+				if len(runes) > c.ChunkOverlap {
+					current = string(runes[len(runes)-c.ChunkOverlap:]) + s
+					continue
+				}
+			}
 			current = s
 		}
 	}
