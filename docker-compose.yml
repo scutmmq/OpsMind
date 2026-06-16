@@ -99,7 +99,7 @@ services:
   # 一个实例即可同时作为本地 LLM 和本地 Embedding 服务。
   # Embedding 端点为 OpenAI-compatible，Base URL 留空时自动复用此实例。
   llama-cpp:
-    image: ghcr.io/ggerganov/llama.cpp:server
+    image: ghcr.io/ggml-org/llama.cpp:server
     container_name: opsmind-llama-cpp
     restart: unless-stopped
     ports:
