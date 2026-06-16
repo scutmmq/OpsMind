@@ -83,11 +83,11 @@
 
 ### BM25 检索
 
-- 🟡 [rag/bm25.go](/server/internal/rag/bm25.go) — 超 10 万篇后内存 map 压力大，应考虑分片或磁盘索引
-- 🟡 [rag/bm25.go](/server/internal/rag/bm25.go) — BuildIndex 同步分词，请求路径调用造成长尾延迟
-- 🟡 [rag/bm25.go](/server/internal/rag/bm25.go) — LoadDict 错误被丢弃，分词器静默回退到字符级切分
-- 🟡 [rag/bm25.go](/server/internal/rag/bm25.go) — 缺少 token 过滤（停用词/标点/过短/空白），低质量 token 污染评分
-- 🟡 [rag/bm25.go](/server/internal/rag/bm25.go) — topK <= 0 时返回空结果，管线误判为「无检索结果」
+- ✅ [rag/bm25.go](/server/internal/rag/bm25.go) — ~~超 10 万篇内存压力~~ — 超阈值时 recordLargeIndex 打 warn；追加 TODO 指向分片/持久化方案
+- ✅ [rag/bm25.go](/server/internal/rag/bm25.go) — ~~BuildIndex 同步分词造成长尾延迟~~ — 添加 building 守卫防并发重复构建；调用方（Processor）在自己的 goroutine 中调用
+- ✅ [rag/bm25.go](/server/internal/rag/bm25.go) — ~~LoadDict 错误被丢弃~~ — 失败时 slog.Warn 记录
+- ✅ [rag/bm25.go](/server/internal/rag/bm25.go) — ~~缺少 token 过滤~~ — isValidToken：过滤空白/标点/符号/单字节 token
+- ✅ [rag/bm25.go](/server/internal/rag/bm25.go) — ~~topK <= 0 返回空结果~~ — topK <= 0 时默认 10
 
 ### Embedding 与向量检索
 
@@ -547,4 +547,4 @@
 19. 上传 API 字段名与文档不一致（文档 `files` vs 代码 `file`）
 
 ---
-**最后更新**：2026-06-16（hybrid/types/chat_service 完善 + 步骤 ID 统一）
+**最后更新**：2026-06-16（bm25.go 5 项 TODO 修复：token 过滤 / LoadDict 日志 / topK 默认值 / 超量 warn / 并发构建守卫）
