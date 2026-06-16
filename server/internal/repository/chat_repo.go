@@ -116,3 +116,21 @@ func (r *ChatRepo) UpdateSession(session *model.ChatSession) error {
 		"duration_ms": session.DurationMs,
 	}).Error
 }
+
+// DeleteSession 删除会话及其全部消息。
+//
+// 必须同时传入 userID 防止水平越权——仅允许删除自己的会话。
+// 先删消息再删会话，保证外键一致性（若将来有 FK 约束）。
+func (r *ChatRepo) DeleteSession(id, userID int64) error {
+	if err := r.db.Where("session_id = ?", id).Delete(&model.ChatMessage{}).Error; err != nil {
+		return err
+	}
+	return r.db.Where("id = ? AND user_id = ?", id, userID).Delete(&model.ChatSession{}).Error
+}
+
+// CountMessagesBySession 统计会话的消息数量。
+func (r *ChatRepo) CountMessagesBySession(sessionID int64) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.ChatMessage{}).Where("session_id = ?", sessionID).Count(&count).Error
+	return count, err
+}

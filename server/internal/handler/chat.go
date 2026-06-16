@@ -54,6 +54,40 @@ func (h *ChatHandler) CreateChatSession(c *gin.Context) {
 	response.Success(c, resp)
 }
 
+// ListSessions 查询当前用户的问答会话列表。
+//
+// GET /api/v1/portal/chat-sessions
+func (h *ChatHandler) ListSessions(c *gin.Context) {
+	userID, _ := getCurrentUserID(c)
+	page, pageSize := parsePagination(c)
+
+	items, total, err := h.svc.ListSessions(userID, page, pageSize)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	response.SuccessWithPage(c, items, total, page, pageSize)
+}
+
+// DeleteSession 删除会话及其全部消息。
+//
+// DELETE /api/v1/portal/chat-sessions/:id
+func (h *ChatHandler) DeleteSession(c *gin.Context) {
+	userID, _ := getCurrentUserID(c)
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+
+	if err := h.svc.DeleteSession(id, userID); err != nil {
+		handleServiceError(c, err)
+		return
+	}
+
+	response.Success(c, nil)
+}
+
 // SubmitFeedback 提交问答反馈。
 //
 // POST /api/v1/portal/chat-sessions/:id/feedback

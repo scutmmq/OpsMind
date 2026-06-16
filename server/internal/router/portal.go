@@ -19,17 +19,21 @@ func registerPortalRoutes(rg *gin.RouterGroup, h *Handlers) {
 		rg.GET("/knowledge-bases", placeholder())
 	}
 
-	// 智能问答（T26 — 已实现）
+	// 智能问答 — 会话 CRUD
 	// chat-sessions/stream 必须在 :id 路由之前注册，避免 "stream" 被当作 :id 参数捕获
 	if h != nil && h.Chat != nil {
 		rg.POST("/chat-sessions/stream", h.Chat.StreamChatSession)
+		rg.GET("/chat-sessions", h.Chat.ListSessions)
 		rg.POST("/chat-sessions", h.Chat.CreateChatSession)
 		rg.GET("/chat-sessions/:id", h.Chat.GetChatDetail)
+		rg.DELETE("/chat-sessions/:id", h.Chat.DeleteSession)
 		rg.POST("/chat-sessions/:id/feedback", h.Chat.SubmitFeedback)
 	} else {
 		rg.POST("/chat-sessions/stream", placeholder())
+		rg.GET("/chat-sessions", placeholder())
 		rg.POST("/chat-sessions", placeholder())
 		rg.GET("/chat-sessions/:id", placeholder())
+		rg.DELETE("/chat-sessions/:id", placeholder())
 		rg.POST("/chat-sessions/:id/feedback", placeholder())
 	}
 

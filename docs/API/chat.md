@@ -225,7 +225,59 @@ Authorization: Bearer <token>
 
 ---
 
-## 3. 查询会话详情
+## 3. 查询会话列表
+
+```http
+GET /api/v1/portal/chat-sessions?page=1&page_size=10
+Authorization: Bearer <token>
+```
+
+**响应：**
+
+```json
+{
+  "code": 0,
+  "data": [
+    {
+      "id": 42,
+      "question": "如何重置 VPN 密码？",
+      "last_answer": "VPN 密码重置步骤：1. 登录自助平台...",
+      "message_count": 4,
+      "created_at": "2026-06-16 10:30:00",
+      "updated_at": "2026-06-16 10:31:03"
+    }
+  ],
+  "total": 15,
+  "page": 1,
+  "page_size": 10
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | int64 | 会话 ID |
+| question | string | 首轮问题标题 |
+| last_answer | string | 最后一条回复摘要（截断 100 字） |
+| message_count | int64 | 消息总数 |
+| created_at | string | 创建时间 |
+| updated_at | string | 最后更新时间 |
+
+---
+
+## 4. 删除会话
+
+```http
+DELETE /api/v1/portal/chat-sessions/:id
+Authorization: Bearer <token>
+```
+
+> 删除会话及其全部消息。仅允许删除自己的会话（归属校验）。
+
+**成功响应：** `{"code":0,"message":"success","data":null}`
+
+---
+
+## 5. 查询会话详情
 
 ```http
 GET /api/v1/portal/chat-sessions/:id
@@ -269,7 +321,7 @@ Authorization: Bearer <token>
 
 ---
 
-## 4. 提交反馈
+## 6. 提交反馈
 
 ```http
 POST /api/v1/portal/chat-sessions/:id/feedback

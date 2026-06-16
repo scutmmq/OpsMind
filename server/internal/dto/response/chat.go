@@ -26,6 +26,16 @@ type MessageItem struct {
 	CreatedAt  string       `json:"created_at"`
 }
 
+// SessionListItem 会话列表条目（不含完整消息，仅摘要）。
+type SessionListItem struct {
+	ID           int64  `json:"id"`
+	Question     string `json:"question"`      // 首轮问题
+	LastAnswer   string `json:"last_answer"`   // 最后一条 assistant 回复（截断）
+	MessageCount int64  `json:"message_count"` // 消息总数
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
+}
+
 // SourceItem 知识来源条目。
 type SourceItem struct {
 	DocName      string  `json:"doc_name"`

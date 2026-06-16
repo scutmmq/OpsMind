@@ -37,6 +37,9 @@ type chatSessionRepo interface {
 	FindMessagesBySession(sessionID int64) ([]model.ChatMessage, error)
 	UpdateFeedback(id int64, feedback int16) error
 	UpdateSession(session *model.ChatSession) error
+	ListByUser(userID int64, page, pageSize int) ([]model.ChatSession, int64, error)
+	DeleteSession(id, userID int64) error
+	CountMessagesBySession(sessionID int64) (int64, error)
 }
 
 type chatPipeline interface {
@@ -255,6 +258,62 @@ func (s *ChatService) GetChatDetail(sessionID int64) (*response.ChatSessionRespo
 		CreatedAt:       session.CreatedAt.Format("2006-01-02 15:04:05"),
 		Messages:        messages,
 	}, nil
+}
+
+// =============================================================================
+// ListSessions — 会话列表
+// =============================================================================
+
+// ListSessions 分页查询用户的问答会话列表。
+//
+// 每条会话返回首轮问题 + 最后一条回复摘要 + 消息总数。
+func (s *ChatService) ListSessions(userID int64, page, pageSize int) ([]response.SessionListItem, int64, error) {
+	if s.chatRepo == nil {
+		return nil, 0, errcode.AppError{Code: errcode.ErrUnknown, Message: "服务未初始化"}
+	}
+	sessions, total, err := s.chatRepo.ListByUser(userID, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	items := make([]response.SessionListItem, 0, len(sessions))
+	for _, sess := range sessions {
+		count, _ := s.chatRepo.CountMessagesBySession(sess.ID)
+		lastAnswer := truncateText(sess.Answer, 100)
+		items = append(items, response.SessionListItem{
+			ID:           sess.ID,
+			Question:     sess.Question,
+			LastAnswer:   lastAnswer,
+			MessageCount: count,
+			CreatedAt:    sess.CreatedAt.Format("2006-01-02 15:04:05"),
+			UpdatedAt:    sess.CreatedAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+	return items, total, nil
+}
+
+// DeleteSession 删除会话及其全部消息（含归属校验）。
+func (s *ChatService) DeleteSession(sessionID, userID int64) error {
+	if s.chatRepo == nil {
+		return errcode.AppError{Code: errcode.ErrUnknown, Message: "服务未初始化"}
+	}
+	session, err := s.chatRepo.FindByID(sessionID)
+	if err != nil {
+		return errcode.AppError{Code: errcode.ErrNotFound, Message: "会话不存在"}
+	}
+	if session.UserID != userID {
+		return errcode.AppError{Code: errcode.ErrForbidden, Message: "无权删除该会话"}
+	}
+	return s.chatRepo.DeleteSession(sessionID, userID)
+}
+
+// truncateText 截断文本到 maxRunes 个字符，超出加 "..."
+func truncateText(text string, maxRunes int) string {
+	runes := []rune(text)
+	if len(runes) <= maxRunes {
+		return text
+	}
+	return string(runes[:maxRunes]) + "..."
 }
 
 // =============================================================================
