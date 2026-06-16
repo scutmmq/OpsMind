@@ -11,9 +11,10 @@ package adapter
 
 import (
 	"context"
-	"log/slog"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"math"
 	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -119,8 +120,26 @@ func (s *PgvectorStore) BatchInsert(ctx context.Context, chunks []VectorChunk) e
 	if len(chunks) == 0 {
 		return nil
 	}
-	// TODO(adapter/vector): 批量 INSERT 应校验每个 chunk 的向量维度一致且等于 VectorDimension。
-	// 维度不匹配会到 pgvector 层才失败，错误定位不够清晰。
+
+	// 校验所有 chunk 的 embedding 维度一致，维度不匹配时在应用层提前报错，
+	// 避免到 pgvector 层才失败（错误信息不友好且难以定位是哪个 chunk 的问题）。
+	var expectedDim int
+	for i, c := range chunks {
+		if len(c.Embedding) == 0 {
+			continue
+		}
+		if expectedDim == 0 {
+			expectedDim = len(c.Embedding)
+		} else if len(c.Embedding) != expectedDim {
+			return fmt.Errorf("chunk %d embedding 维度不一致: 预期 %d, 实际 %d (article_id=%d, chunk_index=%d)",
+				i, expectedDim, len(c.Embedding), c.ArticleID, c.ChunkIndex)
+		}
+		// VectorDimension 字段应与实际 embedding 长度一致
+		if c.VectorDimension != 0 && c.VectorDimension != len(c.Embedding) {
+			return fmt.Errorf("chunk %d VectorDimension 与实际 embedding 长度不匹配: VectorDimension=%d, len(embedding)=%d (article_id=%d)",
+				i, c.VectorDimension, len(c.Embedding), c.ArticleID)
+		}
+	}
 
 	// 构建批量 INSERT
 	query := `INSERT INTO knowledge_chunks
@@ -162,8 +181,17 @@ func (s *PgvectorStore) BatchInsert(ctx context.Context, chunks []VectorChunk) e
 //
 // <=> 算子返回余弦距离（越小越相似），1 - distance 转换为相似度分数。
 func (s *PgvectorStore) CosineSearch(ctx context.Context, kbID int64, embedding []float32, topK int) ([]SearchResult, error) {
-	// TODO(adapter/vector): topK 应限制范围并处理 embedding 为空。
-	// 空向量或过大的 LIMIT 会产生数据库错误或拖慢检索。
+	// 空 embedding 防护：空向量检索无意义，提前报错避免数据库报错
+	if len(embedding) == 0 {
+		return nil, fmt.Errorf("embedding 为空，无法执行向量检索 (kb_id=%d)", kbID)
+	}
+	// topK 范围钳位：过小无意义，过大会拖慢检索且超出业务需求
+	if topK <= 0 {
+		topK = 10
+	} else if topK > 100 {
+		topK = 100
+	}
+
 	query := `SELECT id, article_id, content, chunk_index,
 		1 - (embedding <=> $1::halfvec) AS score
 		FROM knowledge_chunks
@@ -255,9 +283,7 @@ func (s *PgvectorStore) GetChunksByArticle(ctx context.Context, articleID int64)
 //
 // 对 NaN 和 ±Inf 使用 0.0 替代——pgvector 不接受非有限浮点数，
 // 而 NaN/Inf 在 normalized embedding 中不应出现（出现意味着上游 bug），
-// 0.0 替代是最小伤害的降级策略（不影响向量维度）。
-	// 对 NaN 和 ±Inf 使用 0.0 替代——pgvector 不接受非有限浮点数，
-	// 0.0 替代是最小伤害的降级策略（不影响向量维度），同时记录 Warn 便于排查上游问题。
+// 0.0 替代是最小伤害的降级策略（不影响向量维度），同时记录 Warn 便于排查上游问题。
 func float32ToPgVector(v []float32) string {
 	if len(v) == 0 {
 		return "[]"
@@ -270,10 +296,11 @@ func float32ToPgVector(v []float32) string {
 		if i > 0 {
 			b.WriteByte(',')
 		}
-		// NaN 和 Inf 无法被 pgvector 解析，替换为 0.0
-		if f != f || f > 1e30 || f < -1e30 {
-				f = 0.0
-				slog.Warn("向量含 NaN/Inf, 已替换为 0.0")
+		// 使用 math.IsNaN 和 math.IsInf 精确检测非有限浮点数
+		// pgvector 不接受 NaN/Inf，0.0 替代是最小伤害的降级策略
+		if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+			f = 0.0
+			slog.Warn("向量含 NaN/Inf，已替换为 0.0", "index", i)
 		}
 		b.WriteString(fmt.Sprintf("%.6f", f))
 	}

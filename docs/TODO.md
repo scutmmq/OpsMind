@@ -71,11 +71,11 @@
 - ✅ [rag/pipeline.go](/server/internal/rag/pipeline.go) — ~~QueryRewrite 的 history 始终为 nil，上下文消歧功能未生效~~ — RAGOptions 新增 `History` 字段，chat_service 传入会话历史
 - ✅ [rag/pipeline.go](/server/internal/rag/pipeline.go) — ~~重排序候选过多时应提前截断：Rerank 在重排**前**未按 `RerankCount` 截断候选列表；事后检查（第 207 行）为时已晚~~ — Rerank 前按 RerankCount 截断候选池；RerankCount < TopK 校验已前置至 Normalize()
 - ✅ [rag/pipeline.go](/server/internal/rag/pipeline.go) — ~~Execute 缺少入口 opts 规范化：TopK=0 → LIMIT 0，RouteCount=0 → 多路检索跳过，与「零值使用默认」注释不一致~~ — RAGOptions.Normalize() 在 Execute 入口自动填充零值默认值
-- 🟡 [rag/query_rewrite.go](/server/internal/rag/query_rewrite.go) — llm 为 nil 时应降级返回原 query，而非 panic
+- ✅  [rag/query_rewrite.go](/server/internal/rag/query_rewrite.go) — llm 为 nil 时应降级返回原 query，而非 panic
 - ✅ [rag/multi_route.go](/server/internal/rag/multi_route.go) — ~~LLM 输出子查询的清洗逻辑脆弱（`TrimLeft` 依赖特定前缀格式）~~ — 改为 JSON 数组解析，容错 markdown 包裹
 - ✅ [rag/multi_route.go](/server/internal/rag/multi_route.go) — ~~k（子查询数量）无上限~~ — 钳位到 [2, 4]
 - ✅ [rag/hybrid.go](/server/internal/rag/hybrid.go) — ~~单路结果直接返回时未按 topK 截断~~ — 单路结果按 topK 截断后返回
-- 🟡 [rag/types.go](/server/internal/rag/types.go) — RAGOptions 使用裸 `bool`，零值问题致空 JSON `{}` 全部禁用，与文档默认「全部启用」矛盾
+- ✅ [rag/types.go](/server/internal/rag/types.go) — ~~RAGOptions 裸 bool 零值问题~~ — 文档明确：调用方必须以 DefaultRAGOptions() 为起点，禁止裸 RAGOptions{}。chat_service 已遵循此约定
 - ✅ [rag/types.go](/server/internal/rag/types.go) — ~~`RetrievalResult.Score` 注释「归一化到 [0,1]」与 BM25/RRF 实现不一致~~ — 注释已修正
 - ✅ [rag/rerank.go](/server/internal/rag/rerank.go) — ~~`_ = i` 调试残留~~ — rerank.go 已完全重写，该文件不再存在 LLM prompt 相关代码
 - ✅ [rag/pipeline.go](/server/internal/rag/pipeline.go) + [retriever.go](/server/internal/rag/retriever.go) + [API/chat.md](/docs/API/chat.md) — ~~步骤 ID 拼写不一致~~ — 统一为 `vector_retrieve` / `bm25_retrieve`
@@ -91,13 +91,13 @@
 
 ### Embedding 与向量检索
 
-- 🟡 [rag/embedder.go](/server/internal/rag/embedder.go) — 部分批次失败静默跳过，破坏 `vectors[i]` 与 `texts[i]` 的索引对应关系。调用方检测长度不匹配后全量失败，浪费之前成功的批次。
-- 🟡 [rag/embedder.go](/server/internal/rag/embedder.go) — 批次失败仅计数不记错误信息，调试困难
-- 🟡 [rag/embedder.go](/server/internal/rag/embedder.go) — 不校验各批次的 embedding 维度一致性，若中途模型变更可致混维向量写入 pgvector 报错
-- 🟡 [rag/embedder.go](/server/internal/rag/embedder.go) — `client` 为 nil 时不校验——构造函数无防护，首次 `Embed` 调用才 panic
-- 🟡 [adapter/vector_store.go](/server/internal/adapter/vector_store.go) — `BatchInsert` 无跨 chunk 维度一致性校验，维度不匹配时 pgvector 报错不友好
-- 🟡 [adapter/vector_store.go](/server/internal/adapter/vector_store.go) — `CosineSearch` 无 topK 范围和空 embedding 防护
-- 🟡 [adapter/vector_store.go](/server/internal/adapter/vector_store.go) — NaN/Inf 用 `> 1e30` 检测而非 `math.IsInf`；静默替换为 0.0 污染向量空间
+- ✅ [rag/embedder.go](/server/internal/rag/embedder.go) — 部分批次失败静默跳过，破坏 `vectors[i]` 与 `texts[i]` 的索引对应关系。调用方检测长度不匹配后全量失败，浪费之前成功的批次。
+- ✅ [rag/embedder.go](/server/internal/rag/embedder.go) — 批次失败仅计数不记错误信息，调试困难
+- ✅ [rag/embedder.go](/server/internal/rag/embedder.go) — 不校验各批次的 embedding 维度一致性，若中途模型变更可致混维向量写入 pgvector 报错
+- ✅ [rag/embedder.go](/server/internal/rag/embedder.go) — `client` 为 nil 时不校验——构造函数无防护，首次 `Embed` 调用才 panic
+- ✅ [adapter/vector_store.go](/server/internal/adapter/vector_store.go) — `BatchInsert` 无跨 chunk 维度一致性校验，维度不匹配时 pgvector 报错不友好
+- ✅ [adapter/vector_store.go](/server/internal/adapter/vector_store.go) — `CosineSearch` 无 topK 范围和空 embedding 防护
+- ✅ [adapter/vector_store.go](/server/internal/adapter/vector_store.go) — NaN/Inf 用 `> 1e30` 检测而非 `math.IsInf`；静默替换为 0.0 污染向量空间
 
 ### 文档处理（chunker / parser / processor）
 
@@ -547,4 +547,4 @@
 19. 上传 API 字段名与文档不一致（文档 `files` vs 代码 `file`）
 
 ---
-**最后更新**：2026-06-16（bm25.go 5 项 TODO 修复：token 过滤 / LoadDict 日志 / topK 默认值 / 超量 warn / 并发构建守卫）
+**最后更新**：2026-06-16（embedder.go 4 项 + vector_store.go 3 项 TODO 修复：fail-fast / nil client 守卫 / 维度一致性校验 / NaN/Inf 精确检测 / CosineSearch topK+空向量防护 / BatchInsert 跨 chunk 维度校验）

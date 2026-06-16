@@ -101,24 +101,37 @@ func TestEmbedder_MultiBatch(t *testing.T) {
 	}
 }
 
-// TestEmbedder_PartialFailure 验证部分批次失败时返回成功结果。
+// TestEmbedder_PartialFailure 验证批次失败时 fail-fast 返回错误。
+//
+// 从之前的"静默跳过失败批次"改为 fail-fast：
+// 任一批次失败立即返回带批次位置的错误，避免 vectors[i] 与 texts[i] 索引错位。
 func TestEmbedder_PartialFailure(t *testing.T) {
 	mock := &mockEmbeddingClient{dimension: 1024, failCount: 1}
 	emb := rag.NewEmbedder(mock, 5) // batchSize=5
 
-	// 12 条文本 → 5+5+2 三批，第二批失败
+	// 12 条文本 → 5+5+2 三批，第一批失败应立即返回错误
 	texts := make([]string, 12)
 	for i := range texts {
 		texts[i] = fmt.Sprintf("文本%d", i)
 	}
 
-	vectors, _, err := emb.Embed(context.Background(), texts)
-	if err != nil {
-		t.Fatalf("部分失败应继续并返回成功结果: %v", err)
+	_, _, err := emb.Embed(context.Background(), texts)
+	if err == nil {
+		t.Fatal("批次失败应返回错误，而非静默跳过")
 	}
-	// 第一批(5) + 第三批(2) = 7 成功，第二批(5) 失败
-	if len(vectors) < 5 {
-		t.Errorf("至少应有 5 个成功向量（第一批）, 实际 %d", len(vectors))
+	// 错误信息应包含批次位置信息
+	if err.Error() == "" {
+		t.Error("错误信息不应为空")
+	}
+}
+
+// TestEmbedder_NilClient 验证 client 为 nil 时返回错误而非 panic。
+func TestEmbedder_NilClient(t *testing.T) {
+	emb := rag.NewEmbedder(nil, 20)
+
+	_, _, err := emb.Embed(context.Background(), []string{"测试文本"})
+	if err == nil {
+		t.Fatal("nil client 应返回错误")
 	}
 }
 
