@@ -7,6 +7,9 @@ type CreateKBRequest struct {
 	Description     string `json:"description"`                    // 知识库描述
 	EmbeddingModel  string `json:"embedding_model"`               // Embedding 模型名称
 	VectorDimension int    `json:"vector_dimension"`              // 向量维度
+	// TODO(dto/knowledge): 缺少 llm_config_id 可选字段，与 API 文档不一致。
+	// Service 层 CreateKB 需处理该字段，为空时使用系统默认配置。
+	LlmConfigID     int64  `json:"llm_config_id"`
 }
 
 // UpdateKBRequest 更新知识库请求。

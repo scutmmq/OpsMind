@@ -10,6 +10,9 @@ type RAGOptions struct {
 	MultiRoute   bool `json:"multi_route"`
 	Hybrid       bool `json:"hybrid"`
 	Rerank       bool `json:"rerank"`
+	// TODO(dto/chat): 缺少 route_count/rerank_count 字段，与 rag.RAGOptions 类型不同步。
+	RouteCount   int  `json:"route_count"`
+	RerankCount  int  `json:"rerank_count"`
 }
 
 // CreateChatRequest 创建问答会话请求。

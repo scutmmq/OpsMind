@@ -220,9 +220,10 @@ func (h *LLMConfigHandler) TestConnection(c *gin.Context) {
 		}
 
 		response.Success(c, gin.H{
-			"success":     true,
-			"model":       cfg.LLMModel,
-			"latency_ms":  latency,
-			"tokens_used": resp.TokensUsed,
+			"success":      true,
+			"model":        cfg.LLMModel,
+			"latency_ms":   latency,
+			"test_message": resp.Content,
+			"tokens_used":  resp.TokensUsed,
 		})
 }

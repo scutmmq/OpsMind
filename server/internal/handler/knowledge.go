@@ -283,7 +283,7 @@ func (h *KnowledgeHandler) ListArticles(c *gin.Context) {
 	}
 
 	page, pageSize := parsePagination(c)
-	status, _ := strconv.Atoi(c.DefaultQuery("status", "-1"))
+	status, _ := strconv.Atoi(c.DefaultQuery("status", "0"))
 
 	result, svcErr := h.svc.ListArticles(kbID, status, page, pageSize)
 	if svcErr != nil {
@@ -378,6 +378,8 @@ func (h *KnowledgeHandler) GetDocumentStatus(c *gin.Context) {
 		return
 	}
 
+	// TODO(handler/knowledge): 响应缺少 file_name/process_error/progress 字段，
+	// 与 API 文档不一致。需 Service 层返回结构化状态对象而非 string。
 	response.Success(c, gin.H{
 		"article_id":     articleID,
 		"process_status": status,
@@ -398,6 +400,7 @@ func (h *KnowledgeHandler) RetryDocument(c *gin.Context) {
 		return
 	}
 
+	// TODO(handler/knowledge): 返回 message 与 API 文档不一致（文档："已重新加入处理队列"）。
 	response.Success(c, gin.H{
 		"message":    "重试已提交",
 		"article_id": articleID,

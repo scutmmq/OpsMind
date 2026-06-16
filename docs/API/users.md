@@ -5,9 +5,17 @@
 ## 1. 用户列表
 
 ```http
-GET /api/v1/admin/users?page=1&page_size=10
+GET /api/v1/admin/users?page=1&page_size=10&keyword=admin
 Authorization: Bearer <token>
 ```
+
+**查询参数：**
+
+| 参数 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| page | int | 1 | 页码 |
+| page_size | int | 10 | 每页条数（最大 100） |
+| keyword | string | — | 按用户名/姓名/手机号模糊搜索（可选） |
 
 **响应：**
 

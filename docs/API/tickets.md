@@ -65,9 +65,13 @@ Authorization: Bearer <token>
       "ticket_no": "TK-20260611-0001",
       "title": "公司邮箱无法登录",
       "urgency": 2,
+      "impact_scope": 1,
+      "contact_phone": "13800000001",
       "status": 1,
       "status_text": "待处理",
-      "created_at": "2026-06-11 10:30:00"
+      "supplement_count": 0,
+      "created_at": "2026-06-11 10:30:00",
+      "updated_at": "2026-06-11 10:30:00"
     }
   ],
   "total": 5,

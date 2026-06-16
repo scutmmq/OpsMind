@@ -16,6 +16,8 @@ type KBResponse struct {
 	CreatedBy      int64  `json:"created_by"`
 	CreatedAt      string `json:"created_at"`
 	UpdatedAt      string `json:"updated_at"`
+	// TODO(dto/knowledge): 缺少 llm_config_id 和 article_count 字段，与 API 文档不一致。
+	// Service 层 ListKBs 需补充 DB join 查询或子查询填充这两个字段。
 }
 
 // KBListResponse 知识库列表响应。
@@ -45,6 +47,8 @@ type ArticleResponse struct {
 	MinioPath     string    `json:"minio_path"`
 	WordCount     int       `json:"word_count"`
 	ChunkCount    int       `json:"chunk_count"`
+	// TODO(dto/knowledge): 缺少 source_type_text/created_by_name/published_by_name 字段，
+	// 与 API 文档不一致。需 Service 层 join users 表填充姓名映射。
 	ProcessStatus string    `json:"process_status"`
 	ProcessError  string    `json:"process_error"`
 	CreatedBy     int64     `json:"created_by"`

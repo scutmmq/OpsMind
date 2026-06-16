@@ -349,7 +349,7 @@ Content-Type: multipart/form-data
 | 约束 | 值 |
 |------|-----|
 | 支持格式 | PDF、DOCX、MD、TXT |
-| 单文件最大 | 20 MB |
+| 单文件最大 | 50 MB |
 | 单次最多文件数 | 10 个 |
 
 **响应 (200)：**

@@ -34,6 +34,7 @@ Authorization: Bearer <token>
       "target_type": "knowledge_article",
       "target_id": 5,
       "detail": "{\"title\":\"VPN 密码重置 FAQ\"}",
+      "ip_address": "192.168.1.1",
       "created_at": "2026-06-11 20:30:00"
     }
   ],
@@ -156,9 +157,13 @@ Authorization: Bearer <token>
 {
   "code": 0,
   "message": "success",
-  "data": null
+  "data": {
+    "unread_count": 3
+  }
 }
 ```
+
+> 标记已读后返回当前未读消息总数，便于前端同步 badge 计数。
 
 ### 未读计数
 

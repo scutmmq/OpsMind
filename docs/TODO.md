@@ -125,6 +125,15 @@
 - 🟡 [handler/knowledge.go](/server/internal/handler/knowledge.go) — `GetDocumentStatus` 未校验 `kb_id` 与 article.KBID 一致，URL 资源层级校验缺失
 - 📝⭐ [handler/knowledge.go](/server/internal/handler/knowledge.go) — **上传 API 字段名与文档不一致**：[API/knowledge.md](API/knowledge.md) 指定 multipart 字段名 `files`（复数，多文件），代码读取 `c.FormFile("file")`（单数，仅单文件）。响应形状也不一致：文档返回 `documents` 数组含 `file_size`，代码返回扁平对象含 `article_id`/`filename`/`kb_id`。
 
+### 文档响应形状对齐
+
+- 🟡⭐ [dto/response/knowledge.go](/server/internal/dto/response/knowledge.go) — KB 响应缺少 `llm_config_id`/`article_count` 字段（[API/knowledge.md](API/knowledge.md) 文档中有，DTO 未实现）。需补充字段并修改 Service 层 `ListKBs` 填充。
+- 🟡⭐ [dto/request/knowledge.go](/server/internal/dto/request/knowledge.go) — 创建 KB 请求缺少 `llm_config_id` 字段（[API/knowledge.md](API/knowledge.md) 记为可选参数）。需补充 DTO + Service 关联逻辑。
+- 🟡⭐ [dto/response/knowledge.go](/server/internal/dto/response/knowledge.go) — Article 响应缺少 `source_type_text`/`created_by_name`/`published_by_name` 字段（[API/knowledge.md](API/knowledge.md) 文档中有，需 Service 层 join 查询填充）。
+- 🟡⭐ [handler/knowledge.go](/server/internal/handler/knowledge.go) — `GetDocumentStatus` 响应缺少 `file_name`/`process_error`/`progress` 对象（[API/knowledge.md](API/knowledge.md) 文档详细但代码仅返回 `article_id` + `process_status` 字符串）。
+- 🟡⭐ [service/knowledge_service.go](/server/internal/service/knowledge_service.go) — `RetryDocument` 返回 message 与 [API/knowledge.md](API/knowledge.md) 不一致（"重试已提交" vs "已重新加入处理队列"）。
+- 🟢⭐ [dto/request/chat.go](/server/internal/dto/request/chat.go) — RAGOptions 缺少 `route_count`/`rerank_count` 字段，与 `rag.RAGOptions` 类型不同步，前端无法传递这两个参数。
+
 ### 内容质量
 
 - 🟢 [rag/chunker.go](/server/internal/rag/chunker.go) — `mergeSplits` 未实现 chunkOverlap（仅 `splitByRunes` 硬切分支持 overlap）

@@ -287,6 +287,8 @@ type LlmConfigResponse struct {
 	MaxTokens        int    `json:"max_tokens"`
 	VectorDimension  int    `json:"vector_dimension"`
 	IsDefault        bool   `json:"is_default"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
 }
 
 // MarshalJSON 自定义 JSON 序列化，自动对 APIKey 脱敏。
@@ -317,6 +319,8 @@ func NewLlmConfigResponse(cfg *model.LlmConfig) LlmConfigResponse {
 		MaxTokens:        cfg.MaxTokens,
 		VectorDimension:  cfg.VectorDimension,
 		IsDefault:        cfg.IsDefault,
+		CreatedAt:        cfg.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:        cfg.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 }
 
