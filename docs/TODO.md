@@ -74,12 +74,12 @@
 - 🟡 [rag/query_rewrite.go](/server/internal/rag/query_rewrite.go) — llm 为 nil 时应降级返回原 query，而非 panic
 - ✅ [rag/multi_route.go](/server/internal/rag/multi_route.go) — ~~LLM 输出子查询的清洗逻辑脆弱（`TrimLeft` 依赖特定前缀格式）~~ — 改为 JSON 数组解析，容错 markdown 包裹
 - ✅ [rag/multi_route.go](/server/internal/rag/multi_route.go) — ~~k（子查询数量）无上限~~ — 钳位到 [2, 4]
-- 🟡 [rag/hybrid.go](/server/internal/rag/hybrid.go) — 单路结果直接返回时未按 topK 截断
+- ✅ [rag/hybrid.go](/server/internal/rag/hybrid.go) — ~~单路结果直接返回时未按 topK 截断~~ — 单路结果按 topK 截断后返回
 - 🟡 [rag/types.go](/server/internal/rag/types.go) — RAGOptions 使用裸 `bool`，零值问题致空 JSON `{}` 全部禁用，与文档默认「全部启用」矛盾
-- 🟡 [rag/types.go](/server/internal/rag/types.go) — `RetrievalResult.Score` 文档注释称「归一化到 [0,1]」，但 BM25 分数无边界，RRF 融合后可 >1。注释与实现不一致。
+- ✅ [rag/types.go](/server/internal/rag/types.go) — ~~`RetrievalResult.Score` 注释「归一化到 [0,1]」与 BM25/RRF 实现不一致~~ — 注释已修正
 - ✅ [rag/rerank.go](/server/internal/rag/rerank.go) — ~~`_ = i` 调试残留~~ — rerank.go 已完全重写，该文件不再存在 LLM prompt 相关代码
-- 🟢 [rag/pipeline.go](/server/internal/rag/pipeline.go) — 步骤 ID 拼写不一致：`vector_retrieve`（pipeline）vs `vector_retrieval`（retriever 注释/docs）
-- 🟢 [service/chat_service.go](/server/internal/service/chat_service.go) — `pipeline` 字段为死存储：ChatService 通过 LLMService 间接使用 pipeline，自身不再直接调用 `pipeline.Execute`
+- ✅ [rag/pipeline.go](/server/internal/rag/pipeline.go) + [retriever.go](/server/internal/rag/retriever.go) + [API/chat.md](/docs/API/chat.md) — ~~步骤 ID 拼写不一致~~ — 统一为 `vector_retrieve` / `bm25_retrieve`
+- ✅ [service/chat_service.go](/server/internal/service/chat_service.go) — ~~`pipeline` 字段为死存储~~ — 已移除，ChatService 仅通过 LLMService 使用 Pipeline
 
 ### BM25 检索
 
@@ -547,4 +547,4 @@
 19. 上传 API 字段名与文档不一致（文档 `files` vs 代码 `file`）
 
 ---
-**最后更新**：2026-06-16（multi_route.go 2 项 TODO 修复：JSON 解析 + count 钳位；query_rewrite.go llm nil 守卫）
+**最后更新**：2026-06-16（hybrid/types/chat_service 完善 + 步骤 ID 统一）

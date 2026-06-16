@@ -42,10 +42,6 @@ type chatSessionRepo interface {
 	CountMessagesBySession(sessionID int64) (int64, error)
 }
 
-type chatPipeline interface {
-	Execute(ctx context.Context, query string, kbID int64, opts rag.RAGOptions, onStep rag.StepCallback) (*rag.RAGResult, error)
-}
-
 // RAGDefaults RAG 管道默认开关（从 env 配置读取）。
 type RAGDefaults struct {
 	TopK         int
@@ -57,27 +53,25 @@ type RAGDefaults struct {
 
 // ChatService 智能问答服务。
 //
-// knowledgeRepo/chatRepo/pipeline 使用接口类型，便于测试 mock。
-// llmService 统一管理 RAG+LLM 调用编排（流式）。
+// knowledgeRepo/chatRepo 使用接口类型，便于测试 mock。
+// llmService 统一管理 RAG+LLM 调用编排（含 Pipeline）。
 type ChatService struct {
 	ragDefaults   RAGDefaults
 	knowledgeRepo chatKnowledgeRepo
 	chatRepo      chatSessionRepo
-	pipeline      chatPipeline
 	llmService    *LLMService
 }
 
 // NewChatService 创建 ChatService 实例。
 //
 // llmService 可以为 nil（测试或降级场景）。
-func NewChatService(knowledgeRepo chatKnowledgeRepo, chatRepo chatSessionRepo, pipeline chatPipeline, llmService *LLMService, ragDefaults RAGDefaults) *ChatService {
+func NewChatService(knowledgeRepo chatKnowledgeRepo, chatRepo chatSessionRepo, llmService *LLMService, ragDefaults RAGDefaults) *ChatService {
 	if ragDefaults.TopK <= 0 {
 		ragDefaults.TopK = 5
 	}
 	return &ChatService{
 		knowledgeRepo: knowledgeRepo,
 		chatRepo:      chatRepo,
-		pipeline:      pipeline,
 		llmService:    llmService,
 		ragDefaults:   ragDefaults,
 	}

@@ -30,30 +30,30 @@ const (
 
 // HybridFuse 使用 RRF 融合向量检索和 BM25 检索结果。
 //
-// 只处理单一路径有结果的情况（降级返回原结果）。
 // 两路均有结果时计算 RRF 分数，降序排列后截取 topK。
+// 仅单路有结果时直接截断到 topK 后返回。
 //
 // k 为 RRF 平滑参数，通常设为 60。
 func HybridFuse(vectorResults, bm25Results []RetrievalResult, k int, topK int) []RetrievalResult {
-	// TODO(rag/hybrid): 单路结果直接返回时没有按 topK 截断。
-	// 如果上游传入多路聚合结果，可能返回超过目标候选数。
 	if len(vectorResults) == 0 && len(bm25Results) == 0 {
 		return nil
 	}
 
-	// 仅单路有结果时直接返回
+	// 仅单路有结果时直接截断到 topK
 	if len(vectorResults) == 0 {
-		result := make([]RetrievalResult, len(bm25Results))
-		for i, r := range bm25Results {
-			result[i] = r
+		n := min(len(bm25Results), topK)
+		result := make([]RetrievalResult, n)
+		for i := range n {
+			result[i] = bm25Results[i]
 			result[i].Source = "hybrid"
 		}
 		return result
 	}
 	if len(bm25Results) == 0 {
-		result := make([]RetrievalResult, len(vectorResults))
-		for i, r := range vectorResults {
-			result[i] = r
+		n := min(len(vectorResults), topK)
+		result := make([]RetrievalResult, n)
+		for i := range n {
+			result[i] = vectorResults[i]
 			result[i].Source = "hybrid"
 		}
 		return result

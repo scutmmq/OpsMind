@@ -208,7 +208,7 @@ func main() {
 	slog.Info("LLMService 已初始化（RAG + prompt + LLM 统一调用）")
 
 	// ChatService（会话生命周期管理）
-	chatService := service.NewChatService(knowledgeRepo, chatRepo, pipeline, llmService, service.RAGDefaults{
+	chatService := service.NewChatService(knowledgeRepo, chatRepo, llmService, service.RAGDefaults{
 		TopK:         cfg.AI.DefaultTopK,
 		QueryRewrite: cfg.AI.RAGQueryRewrite,
 		MultiRoute:   cfg.AI.RAGMultiRoute,

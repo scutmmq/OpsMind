@@ -12,7 +12,7 @@ import (
 
 // VectorRetriever 向量检索器：将查询文本向量化后调用 pgvector cosine 检索。
 //
-// 实现 Retriever 接口，供 Pipeline 在 vector_retrieval 步骤中使用。
+// 实现 Retriever 接口，供 Pipeline 在 vector_retrieve 步骤中使用。
 type VectorRetriever struct {
 	embedder *Embedder
 	store    adapter.VectorStore

@@ -95,9 +95,9 @@ data: {"type":"step","id":"query_rewrite","label":"查询改写"}
 
 data: {"type":"step","id":"multi_route","label":"多路检索"}
 
-data: {"type":"step","id":"vector_retrieval","label":"向量检索"}
+data: {"type":"step","id":"vector_retrieve","label":"向量检索"}
 
-data: {"type":"step","id":"bm25_retrieval","label":"BM25检索"}
+data: {"type":"step","id":"bm25_retrieve","label":"BM25检索"}
 
 data: {"type":"step","id":"hybrid_fuse","label":"结果融合"}
 
@@ -110,8 +110,8 @@ data: {"type":"step","id":"llm_generate","label":"LLM 生成"}
 |---------|-------|------|
 | `query_rewrite` | 查询改写 | LLM 消除对话指代歧义 |
 | `multi_route` | 多路检索 | LLM 生成子查询 |
-| `vector_retrieval` | 向量检索 | pgvector cosine 相似度检索 |
-| `bm25_retrieval` | BM25检索 | 倒排索引稀疏检索 |
+| `vector_retrieve` | 向量检索 | pgvector cosine 相似度检索 |
+| `bm25_retrieve` | BM25检索 | 倒排索引稀疏检索 |
 | `hybrid_fuse` | 结果融合 | RRF 融合排序 |
 | `rerank` | 重排序 | cross-encoder 重排候选分块 |
 | `llm_generate` | LLM 生成 | 调用 LLM 生成答案 |
@@ -139,7 +139,7 @@ data: {"type":"token","content":"如下：\n1."}
 ### done 事件 — 流式结束，含完整元数据
 
 ```
-data: {"type":"done","metadata":{"session_id":42,"question":"如何重置 VPN 密码？","answer":"VPN 密码重置步骤：1. 登录自助平台...","sources":[{"doc_name":"VPN 密码重置 FAQ","chunk_content":"...","confidence":0.85}],"confidence":0.85,"can_submit_ticket":false,"duration_ms":3200,"feedback":0,"created_at":"2026-06-16 10:30:05","pipeline":{"steps":[{"id":"query_rewrite","label":"查询改写","duration_ms":120},{"id":"vector_retrieval","label":"向量检索","duration_ms":45},{"id":"hybrid_fuse","label":"结果融合","duration_ms":2},{"id":"rerank","label":"重排序","duration_ms":180},{"id":"llm_generate","label":"LLM 生成","duration_ms":2800}],"total_duration_ms":3185}}}
+data: {"type":"done","metadata":{"session_id":42,"question":"如何重置 VPN 密码？","answer":"VPN 密码重置步骤：1. 登录自助平台...","sources":[{"doc_name":"VPN 密码重置 FAQ","chunk_content":"...","confidence":0.85}],"confidence":0.85,"can_submit_ticket":false,"duration_ms":3200,"feedback":0,"created_at":"2026-06-16 10:30:05","pipeline":{"steps":[{"id":"query_rewrite","label":"查询改写","duration_ms":120},{"id":"vector_retrieve","label":"向量检索","duration_ms":45},{"id":"hybrid_fuse","label":"结果融合","duration_ms":2},{"id":"rerank","label":"重排序","duration_ms":180},{"id":"llm_generate","label":"LLM 生成","duration_ms":2800}],"total_duration_ms":3185}}}
 ```
 
 | 字段 | 类型 | 说明 |

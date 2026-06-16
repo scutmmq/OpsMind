@@ -98,7 +98,7 @@ type RetrievalResult struct {
 	ChunkID    int64   `json:"chunk_id"`    // knowledge_chunks.id
 	ArticleID  int64   `json:"article_id"`  // knowledge_articles.id
 	Content    string  `json:"content"`     // 分块文本内容
-	Score      float64 `json:"score"`       // 相关度分数（归一化到 [0,1]）
+	Score      float64 `json:"score"`       // 相关度分数（RRF 融合后可 >1，BM25 无上界）
 	Source     string  `json:"source"`      // 检索来源："vector" | "bm25" | "hybrid"
 	ChunkIndex int     `json:"chunk_index"` // 分块序号
 }
