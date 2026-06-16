@@ -13,7 +13,16 @@ type ChatSessionResponse struct {
 	Feedback        int16         `json:"feedback"`
 	CreatedAt       string        `json:"created_at"`
 	Messages        []MessageItem `json:"messages,omitempty"` // 多轮对话历史（GetChatDetail 时返回）
-	// TODO(dto/chat): 增加 pipeline 字段保存管道指标。
+	Pipeline        []PipelineStep `json:"pipeline,omitempty"` // RAG 管道步骤指标
+}
+
+// PipelineStep RAG 管道步骤信息。
+type PipelineStep struct {
+	StepID     string `json:"step_id"`
+	Label      string `json:"label"`
+	DurationMS int64  `json:"duration_ms"`
+	Success    bool   `json:"success"`
+	Error      string `json:"error,omitempty"`
 }
 
 // MessageItem 对话消息条目（多轮对话历史）。

@@ -43,7 +43,7 @@ func (h *ChatHandler) CreateChatSession(c *gin.Context) {
 	}
 
 	userID, _ := getCurrentUserID(c)
-	session, err := h.svc.CreateSession(req, userID)
+	session, err := h.svc.CreateSession(c.Request.Context(), req, userID)
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -94,6 +94,7 @@ func (h *ChatHandler) DeleteSession(c *gin.Context) {
 // SubmitFeedback 提交问答反馈。
 //
 // POST /api/v1/portal/chat-sessions/:id/feedback
+// 校验规则下沉到 Service 层集中管理。
 func (h *ChatHandler) SubmitFeedback(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -110,12 +111,8 @@ func (h *ChatHandler) SubmitFeedback(c *gin.Context) {
 		return
 	}
 
-	if body.Feedback < 0 || body.Feedback > 2 {
-		response.Error(c, errcode.ErrParam, "反馈值无效，仅允许 0（未评价）、1（已解决）、2（未解决）")
-		return
-	}
-
-	if err := h.svc.SubmitFeedback(id, body.Feedback); err != nil {
+	userID, _ := getCurrentUserID(c)
+	if err := h.svc.SubmitFeedback(id, userID, body.Feedback); err != nil {
 		handleServiceError(c, err)
 		return
 	}
@@ -123,7 +120,7 @@ func (h *ChatHandler) SubmitFeedback(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// GetChatDetail 查询问答会话详情。
+// GetChatDetail 查询问答会话详情（含归属校验）。
 //
 // GET /api/v1/portal/chat-sessions/:id
 func (h *ChatHandler) GetChatDetail(c *gin.Context) {
@@ -134,7 +131,8 @@ func (h *ChatHandler) GetChatDetail(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.svc.GetChatDetail(id)
+	userID, _ := getCurrentUserID(c)
+	resp, err := h.svc.GetChatDetail(id, userID)
 	if err != nil {
 		handleServiceError(c, err)
 		return
@@ -193,7 +191,7 @@ func (h *ChatHandler) StreamChatMessage(c *gin.Context) {
 	c.Header("X-Accel-Buffering", "no")
 	c.Status(http.StatusOK)
 
-	eventCh, err := h.svc.StreamChat(ctx, sessionID, req.Question, userID)
+	eventCh, err := h.svc.StreamChat(ctx, sessionID, req.Question, userID, req.RouteCount, req.RerankCount)
 	if err != nil {
 		// SSE 头已发送，改用 SSE error 事件返回错误
 		writeSSEEvent(c.Writer, service.StreamEvent{Type: "error", Error: err.Error()})

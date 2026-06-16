@@ -13,5 +13,7 @@ type CreateSessionRequest struct {
 //
 // 用于 POST /api/v1/portal/chat-sessions/:id/stream（SSE 流式）。
 type SendMessageRequest struct {
-	Question string `json:"question" binding:"required"` // 用户问题
+	Question   string `json:"question" binding:"required,max=2000"` // 用户问题（限制 2000 字符防滥用）
+	RouteCount int    `json:"route_count"`                          // 多路检索子查询数（0=使用默认值 3）
+	RerankCount int   `json:"rerank_count"`                         // 重排序截断数（0=使用默认值 5）
 }

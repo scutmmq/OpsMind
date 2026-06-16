@@ -83,7 +83,7 @@ func NewChatService(knowledgeRepo chatKnowledgeRepo, chatRepo chatSessionRepo, l
 
 // CreateSession 创建问答会话（仅创建容器，不含 LLM 调用）。
 // 与 StreamChat 分离的原因是：会话生命周期与 AI 调用解耦，避免 LLM 超时阻塞 HTTP 请求。
-func (s *ChatService) CreateSession(req request.CreateSessionRequest, userID int64) (*model.ChatSession, error) {
+func (s *ChatService) CreateSession(ctx context.Context, req request.CreateSessionRequest, userID int64) (*model.ChatSession, error) {
 	if s.knowledgeRepo != nil {
 		if _, err := s.knowledgeRepo.FindKBByID(req.KBID); err != nil {
 			return nil, errcode.AppError{Code: errcode.ErrNotFound, Message: "知识库不存在"}
@@ -116,7 +116,8 @@ func (s *ChatService) CreateSession(req request.CreateSessionRequest, userID int
 
 // StreamChat 在已有会话中发送消息并流式返回 AI 答案。
 // done 事件时自动持久化 user+assistant 消息并更新会话摘要。
-func (s *ChatService) StreamChat(ctx context.Context, sessionID int64, question string, userID int64) (<-chan StreamEvent, error) {
+// routeCount/rerankCount 为 0 时使用 RAG 管道默认值。
+func (s *ChatService) StreamChat(ctx context.Context, sessionID int64, question string, userID int64, routeCount, rerankCount int) (<-chan StreamEvent, error) {
 	if strings.TrimSpace(question) == "" {
 		return nil, errcode.AppError{Code: errcode.ErrParam, Message: "问题不能为空"}
 	}
@@ -151,13 +152,15 @@ func (s *ChatService) StreamChat(ctx context.Context, sessionID int64, question 
 		}
 	}
 
-	// RAG 管道选项：从 env 配置读取默认值
+	// RAG 管道选项：从 env 配置读取默认值，请求级参数覆盖
 	opts := rag.RAGOptions{
 		TopK:         s.ragDefaults.TopK,
 		QueryRewrite: s.ragDefaults.QueryRewrite,
 		MultiRoute:   s.ragDefaults.MultiRoute,
 		Hybrid:       s.ragDefaults.Hybrid,
 		Rerank:       s.ragDefaults.Rerank,
+		RouteCount:   routeCount,
+		RerankCount:  rerankCount,
 		History:      ragHistory,
 	}
 
@@ -218,12 +221,21 @@ func (s *ChatService) StreamChat(ctx context.Context, sessionID int64, question 
 // =============================================================================
 
 // SubmitFeedback 提交问答反馈。
-func (s *ChatService) SubmitFeedback(sessionID int64, feedback int16) error {
+//
+// 校验规则在 Service 层集中管理，不依赖 Handler 层参数校验。
+func (s *ChatService) SubmitFeedback(sessionID int64, userID int64, feedback int16) error {
 	if s.chatRepo == nil {
 		return errcode.AppError{Code: errcode.ErrUnknown, Message: "服务未初始化"}
 	}
-	if _, err := s.chatRepo.FindByID(sessionID); err != nil {
+	if feedback < 0 || feedback > 2 {
+		return errcode.AppError{Code: errcode.ErrParam, Message: "反馈值无效，请输入 0（未反馈）/1（已解决）/2（未解决）"}
+	}
+	session, err := s.chatRepo.FindByID(sessionID)
+	if err != nil {
 		return errcode.AppError{Code: errcode.ErrNotFound, Message: "会话不存在"}
+	}
+	if session.UserID != userID {
+		return errcode.AppError{Code: errcode.ErrForbidden, Message: "无权操作该会话"}
 	}
 	return s.chatRepo.UpdateFeedback(sessionID, feedback)
 }
@@ -232,14 +244,17 @@ func (s *ChatService) SubmitFeedback(sessionID int64, feedback int16) error {
 // GetChatDetail
 // =============================================================================
 
-// GetChatDetail 查询问答会话详情（含多轮对话消息历史）。
-func (s *ChatService) GetChatDetail(sessionID int64) (*response.ChatSessionResponse, error) {
+// GetChatDetail 查询问答会话详情（含多轮对话消息历史 + 归属校验）。
+func (s *ChatService) GetChatDetail(sessionID int64, userID int64) (*response.ChatSessionResponse, error) {
 	if s.chatRepo == nil {
 		return nil, errcode.AppError{Code: errcode.ErrUnknown, Message: "服务未初始化"}
 	}
 	session, err := s.chatRepo.FindByID(sessionID)
 	if err != nil {
 		return nil, errcode.AppError{Code: errcode.ErrNotFound, Message: "会话不存在"}
+	}
+	if session.UserID != userID {
+		return nil, errcode.AppError{Code: errcode.ErrForbidden, Message: "无权查看该会话"}
 	}
 
 	var sources []response.SourceItem
