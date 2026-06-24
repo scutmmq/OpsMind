@@ -301,14 +301,22 @@ func wireApp() (*app, error) {
 		)
 	})
 
+	genHub := service.NewGenerationHub()
+	slog.Info("GenerationHub 已初始化")
+
 	chatService := service.NewChatService(knowledgeRepo, chatRepo, llmService, service.RAGDefaults{
 		TopK:         cfg.AI.DefaultTopK,
 		QueryRewrite: cfg.AI.RAGQueryRewrite,
 		MultiRoute:   cfg.AI.RAGMultiRoute,
 		Hybrid:       cfg.AI.RAGHybrid,
 		Rerank:       cfg.AI.RAGRerank,
-	}, configService)
+	}, configService, genHub)
 	slog.Info("ChatService 已初始化")
+
+	// 启动时清理残留的 generating 消息（上次异常退出遗留）
+	if err := chatService.CleanupStaleGenerating(context.Background()); err != nil {
+		slog.Warn("清理残留 generating 消息失败", "error", err)
+	}
 
 	auditService := service.NewAuditService(auditRepo)
 
