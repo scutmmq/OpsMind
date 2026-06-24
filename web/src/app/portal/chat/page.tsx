@@ -13,7 +13,7 @@ import { AppleButton } from '@/components/ui/AppleButton';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { useConfigValue } from '@/hooks/useAppConfig';
-import { useChatStream, type ChatMessage as ChatMsg } from '@/hooks/useChatStream';
+import { useChatStreamStore, type ChatMessage as ChatMsg } from '@/contexts/ChatStreamProvider';
 import { isTokenExpired } from '@/lib/auth';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { ChatMessage } from '@/components/chat/ChatMessage';
@@ -34,6 +34,7 @@ interface ApiChatMessage {
   content: string;
   sources?: { doc_name: string; chunk_content: string; confidence: number }[];
   confidence?: number;
+  status?: string;
   created_at: string;
 }
 
@@ -57,17 +58,12 @@ export default function ChatPage() {
   const [deleting, setDeleting] = useState(false);
   const { value: appName } = useConfigValue('app_name');
 
-  const {
-    messages,
-    streaming,
-    loading,
-    pipelineSteps,
-    currentStep,
-    send,
-    abort,
-    clear,
-    loadMessages,
-  } = useChatStream(token || '', (msg) => toast.error(msg));
+  const store = useChatStreamStore();
+  const stream = sessionId ? store.getStream(sessionId) : undefined;
+  const messages = stream?.messages ?? [];
+  const streaming = stream?.status === 'streaming';
+  const pipelineSteps = stream?.pipelineSteps ?? [];
+  const currentStep = stream?.currentStep ?? null;
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -100,16 +96,15 @@ export default function ChatPage() {
 
     setInput('');
     const wasNew = !sessionId;
-    const newSid = await send(question, selectedKB, sessionId);
-    if (newSid) {
-      setSessionId(newSid);
+    const sid = await store.send(sessionId, selectedKB, question, token || '', (m) => toast.error(m));
+    if (sid) {
+      setSessionId(sid);
       setFeedbackMap({});
       if (wasNew) mutateSessions();
     }
   };
 
   const handleNewChat = () => {
-    clear();
     setSessionId(null);
     setFeedbackMap({});
     setMobileOpen(false);
@@ -120,21 +115,24 @@ export default function ChatPage() {
     const prevId = sessionId;
     setSessionId(id);
     setMobileOpen(false);
+    setFeedbackMap({});
     try {
       const detail = await getChatDetail(id);
-      // 后端 messages 字段带 omitempty：0 消息的会话（新建未问、或问答失败）
-      // 响应里不含该字段，直接 .map 会抛 TypeError 触发"加载会话失败"。
-      // 用 ?? [] 兜底，空会话也能正常打开为空对话。
-      const msgs: ChatMsg[] = ((detail.messages ?? []) as ApiChatMessage[]).map((msg) => ({
-        id: String(msg.id),
-        role: msg.role,
-        content: msg.content,
-        sources: msg.sources,
-        confidence: msg.confidence,
-        createdAt: msg.created_at,
+      const msgs: ChatMsg[] = ((detail.messages ?? []) as ApiChatMessage[]).map((m) => ({
+        id: String(m.id),
+        role: m.role,
+        content: m.content,
+        sources: m.sources,
+        confidence: m.confidence,
+        status: m.status,
+        createdAt: m.created_at,
       }));
-      loadMessages(msgs);
-      setFeedbackMap({});
+      store.setMessages(id, msgs);
+      // 最后一条 assistant 仍 generating → 续传（从头回放缓冲）
+      const last = msgs[msgs.length - 1];
+      if (last?.role === 'assistant' && last.status === 'generating' && token) {
+        store.resume(id, 0, token);
+      }
     } catch {
       toast.error('加载会话失败');
       setSessionId(prevId);
@@ -169,7 +167,7 @@ export default function ChatPage() {
     } finally { setFeedbackLoading(false); }
   };
 
-  const isLoading = loading || streaming;
+  const isLoading = streaming;
   const hasMessages = messages.length > 0;
 
   return (
@@ -327,17 +325,24 @@ export default function ChatPage() {
 
         {/* 输入栏 — 仅选择知识库后显示 */}
         {selectedKB > 0 && (
-          <ChatInput
-            ref={inputRef}
-            value={input}
-            onChange={setInput}
-            onSend={() => handleSend()}
-            onStop={abort}
-            disabled={!streaming && isLoading}
-            loading={loading}
-            streaming={streaming}
-            placeholder="输入问题，按 Enter 发送..."
-          />
+          <>
+            {streaming && sessionId && (
+              <div className="max-w-[768px] mx-auto px-4 pt-2">
+                <AppleButton variant="utility" onClick={() => store.cancel(sessionId)}>停止生成</AppleButton>
+              </div>
+            )}
+            <ChatInput
+              ref={inputRef}
+              value={input}
+              onChange={setInput}
+              onSend={() => handleSend()}
+              onStop={() => sessionId && store.cancel(sessionId)}
+              disabled={streaming}
+              loading={false}
+              streaming={streaming}
+              placeholder="输入问题，按 Enter 发送..."
+            />
+          </>
         )}
       </div>
 
